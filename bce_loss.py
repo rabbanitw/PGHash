@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-def custom_bce(y_true, y_pred, epsilon=1e-2):
+def sparse_bce(y_true, y_pred, epsilon=1e-2):
     idx = y_true.indices
     false_mat = tf.math.log(tf.math.maximum(1. - y_pred, tf.constant(epsilon))).numpy()
     true_loss = 0

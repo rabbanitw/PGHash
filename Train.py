@@ -2,7 +2,7 @@ import tensorflow as tf
 # import tensorflow_datasets as tfds
 from mlp import SparseNeuralNetwork
 from dataloader import load_amazon670
-from bce_loss import custom_bce
+from bce_loss import sparse_bce
 import time
 import os
 
@@ -10,9 +10,9 @@ import os
 def train(train_data, test_data):
 
     layer_dims = [135909, 128, 670091]
-    # 670091
     model = SparseNeuralNetwork(layer_dims)
-    optimizer = tf.keras.optimizers.SGD(learning_rate=1e-3)
+    model.summary()
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
 
     epochs = 2
     for epoch in range(epochs):
@@ -33,7 +33,7 @@ def train(train_data, test_data):
                 logits = model(x_batch_train, training=True)  # Logits for this minibatch
 
                 # Compute the loss value for this minibatch.
-                loss_value = custom_bce(y_batch_train, logits)
+                loss_value = sparse_bce(y_batch_train, logits)
 
             # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
@@ -55,7 +55,7 @@ def train(train_data, test_data):
 
 
 if __name__ == '__main__':
-    batch_size = 16
+    batch_size = 128
     print('Loading data...')
     train_data, test_data = load_amazon670(batch_size)
     print('Beginning training...')
