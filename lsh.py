@@ -105,5 +105,4 @@ def slidelayer(in_layer,weight, sdim, num_tables, cr):
     far_inds= (tf.math.top_k(-1*ham_avgs,int(num_inds/2))).indices.numpy()
     inds = list(close_inds)+list(far_inds)
 
-    #Resulting tensor is very sparse.
     return inds
