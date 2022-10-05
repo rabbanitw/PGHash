@@ -2,6 +2,7 @@ import tensorflow as tf
 from mlp import SparseNeuralNetwork
 from dataloader import load_amazon670
 from bce_loss import sparse_bce
+from accuracy import compute_accuracy
 import time
 import os
 
@@ -32,6 +33,9 @@ def train(train_data, test_data):
 
                 # Compute the loss value for this minibatch.
                 loss_value = sparse_bce(y_batch_train, y_pred)
+
+                # compute accuracy for the minibatch
+                acc = compute_accuracy(y_batch_train, y_pred)
 
             # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
