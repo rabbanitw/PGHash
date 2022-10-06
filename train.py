@@ -1,15 +1,11 @@
 import tensorflow as tf
-from mlp import SparseNeuralNetwork
 from sparse_bce import sparse_bce
 from accuracy import compute_accuracy, AverageMeter
 import time
 
 
-def train(train_data, test_data, epochs):
+def train(model, optimizer, train_data, test_data, epochs):
 
-    layer_dims = [135909, 128, 670091]
-    model = SparseNeuralNetwork(layer_dims)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
     top1 = AverageMeter()
     total_batches = 0
 

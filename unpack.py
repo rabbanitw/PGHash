@@ -15,3 +15,14 @@ def unflatten_weights(flat_weights, layer_shapes, layer_sizes):
         unflatten_model.append(flat_weights[start_idx:end_idx].reshape(layer_shapes[i]))
         start_idx += layer_size
     return unflatten_model
+
+
+def get_model_architecture(model):
+    # find shape and total elements for each layer of the resnet model
+    model_weights = model.get_weights()
+    layer_shapes = []
+    layer_sizes = []
+    for i in range(len(model_weights)):
+        layer_shapes.append(model_weights[i].shape)
+        layer_sizes.append(model_weights[i].size)
+    return layer_shapes, layer_sizes
