@@ -4,7 +4,7 @@ from accuracy import compute_accuracy, AverageMeter
 import time
 
 
-def train(model, optimizer, train_data, test_data, epochs):
+def train(model, optimizer, communicator, train_data, test_data, epochs):
 
     top1 = AverageMeter()
     total_batches = 0
@@ -42,6 +42,11 @@ def train(model, optimizer, train_data, test_data, epochs):
             # Run one step of gradient descent by updating
             # the value of the variables to minimize the loss.
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
+
+            # communication happens here
+            comm_start = time.time()
+            d_comm_time = communicator.communicate(model)
+            comm_t = time.time() - comm_start
 
             print('Step Finished in %f Seconds With %f Step Accuracy and %f Epoch Accuracy'
                   % ((time.time() - t), acc, top1.avg))

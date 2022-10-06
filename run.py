@@ -18,8 +18,7 @@ if __name__ == '__main__':
     graph_type = 'ring'
     weight_type = None
     num_clusters = None
-    p = 3 / size
-    G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, p=p, num_c=num_clusters)
+    G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
     # initialize model
     layer_dims = [135909, 128, 670091]
@@ -38,4 +37,4 @@ if __name__ == '__main__':
     train_data, test_data = load_amazon670(rank, size, batch_size)
 
     print('Beginning training...')
-    train(model, optimizer, train_data, test_data, epochs)
+    train(model, optimizer, communicator, train_data, test_data, epochs)
