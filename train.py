@@ -1,20 +1,18 @@
 import tensorflow as tf
 from mlp import SparseNeuralNetwork
-from dataloader import load_amazon670
-from bce_loss import sparse_bce
+from sparse_bce import sparse_bce
 from accuracy import compute_accuracy, AverageMeter
 import time
-import os
 
 
-def train(train_data, test_data):
+def train(train_data, test_data, epochs):
 
     layer_dims = [135909, 128, 670091]
     model = SparseNeuralNetwork(layer_dims)
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
     top1 = AverageMeter()
+    total_batches = 0
 
-    epochs = 2
     for epoch in range(epochs):
         print("\nStart of epoch %d" % (epoch,))
 
@@ -52,21 +50,14 @@ def train(train_data, test_data):
             print('Step Finished in %f Seconds With %f Step Accuracy and %f Epoch Accuracy'
                   % ((time.time() - t), acc, top1.avg))
 
+            total_batches += b
             # Log every 200 batches.
             if step % 5 == 0:
                 print(
                     "Training loss (for one batch) at step %d: %.4f"
                     % (step, float(loss_value))
                 )
-                print("Seen so far: %s samples" % ((step + 1) * batch_size))
+                print("Seen so far: %s samples" % total_batches)
 
         # reset accuracy statistics for next epoch
         top1.reset()
-
-
-if __name__ == '__main__':
-    batch_size = 64
-    print('Loading data...')
-    train_data, test_data = load_amazon670(batch_size)
-    print('Beginning training...')
-    train(train_data, test_data)
