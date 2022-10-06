@@ -2,7 +2,7 @@ import tensorflow as tf
 from mlp import SparseNeuralNetwork
 from dataloader import load_amazon670
 from bce_loss import sparse_bce
-from accuracy import compute_accuracy
+from accuracy import compute_accuracy, AverageMeter
 import time
 import os
 
@@ -12,6 +12,7 @@ def train(train_data, test_data):
     layer_dims = [135909, 128, 670091]
     model = SparseNeuralNetwork(layer_dims)
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+    top1 = AverageMeter()
 
     epochs = 2
     for epoch in range(epochs):
@@ -19,6 +20,8 @@ def train(train_data, test_data):
 
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
+
+            b, s = x_batch_train.get_shape()
 
             t = time.time()
             # Open a GradientTape to record the operations run
@@ -35,7 +38,8 @@ def train(train_data, test_data):
                 loss_value = sparse_bce(y_batch_train, y_pred)
 
                 # compute accuracy for the minibatch
-                acc = compute_accuracy(y_batch_train, y_pred)
+                acc = compute_accuracy(y_batch_train, y_pred, topk=1)
+                top1.update(acc, b)
 
             # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
@@ -45,7 +49,8 @@ def train(train_data, test_data):
             # the value of the variables to minimize the loss.
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
-            print('Step Finished in %f Seconds' % (time.time() - t))
+            print('Step Finished in %f Seconds With %f Step Accuracy and %f Epoch Accuracy'
+                  % ((time.time() - t), acc, top1.avg))
 
             # Log every 200 batches.
             if step % 5 == 0:
@@ -55,9 +60,12 @@ def train(train_data, test_data):
                 )
                 print("Seen so far: %s samples" % ((step + 1) * batch_size))
 
+        # reset accuracy statistics for next epoch
+        top1.reset()
+
 
 if __name__ == '__main__':
-    batch_size = 128
+    batch_size = 64
     print('Loading data...')
     train_data, test_data = load_amazon670(batch_size)
     print('Beginning training...')
