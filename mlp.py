@@ -10,6 +10,7 @@ def SparseNeuralNetwork(layer_dims, sparsity=True):
     x = DenseLayer(layer_dims[1])(inputs)
     if len(layer_dims) > 2:
         for i in range(2, len(layer_dims)):
+            x = tf.keras.layers.BatchNormalization()(x)
             x = tf.keras.activations.relu(x)
             x = DenseLayer(layer_dims[i])(x)
     x = tf.keras.activations.sigmoid(x)

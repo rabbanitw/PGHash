@@ -1,15 +1,11 @@
 import tensorflow as tf
-from mlp import SparseNeuralNetwork
 from sparse_bce import sparse_bce
 from accuracy import compute_accuracy, AverageMeter
 import time
 
 
-def train(train_data, test_data, epochs):
+def train(model, optimizer, communicator, train_data, test_data, epochs):
 
-    layer_dims = [135909, 128, 670091]
-    model = SparseNeuralNetwork(layer_dims)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
     top1 = AverageMeter()
     total_batches = 0
 
@@ -46,6 +42,11 @@ def train(train_data, test_data, epochs):
             # Run one step of gradient descent by updating
             # the value of the variables to minimize the loss.
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
+
+            # communication happens here
+            comm_start = time.time()
+            d_comm_time = communicator.communicate(model)
+            comm_t = time.time() - comm_start
 
             print('Step Finished in %f Seconds With %f Step Accuracy and %f Epoch Accuracy'
                   % ((time.time() - t), acc, top1.avg))
