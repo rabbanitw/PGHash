@@ -26,3 +26,14 @@ def get_model_architecture(model):
         layer_shapes.append(model_weights[i].shape)
         layer_sizes.append(model_weights[i].size)
     return layer_shapes, layer_sizes
+
+
+def layer_compression(model, max_idx):
+    weights = model.get_weights()
+    final_dense = weights[-2]
+    new_final_dense = np.zeros_like(final_dense)
+    new_final_dense[max_idx] = final_dense[max_idx]
+    weights[-2] = new_final_dense
+    model.set_weights(weights)
+
+

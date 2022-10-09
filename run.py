@@ -2,9 +2,9 @@ import tensorflow as tf
 from dataloader import load_amazon670
 from train import train
 from network import Graph
-from dsgd import DecentralizedSGD
+from communicators import DecentralizedSGD, CentralizedSGD
 from mlp import SparseNeuralNetwork
-from unpack import get_model_architecture
+from unpack import get_model_architecture, layer_compression
 from mpi4py import MPI
 
 
@@ -30,11 +30,14 @@ if __name__ == '__main__':
     # get model architecture
     layer_shapes, layer_sizes = get_model_architecture(model)
 
-    # initialize D-SGD
-    communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
+    # initialize D-SGD or Centralized SGD
+    # communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
+    communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1/size, layer_shapes, layer_sizes, 0, 1)
 
     print('Loading and partitioning data...')
     train_data, test_data = load_amazon670(rank, size, batch_size)
+
+    # layer_compression(model, [1, 4])
 
     print('Beginning training...')
     train(model, optimizer, communicator, train_data, test_data, epochs)
