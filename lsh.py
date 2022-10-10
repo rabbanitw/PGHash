@@ -9,7 +9,7 @@ import tensorflow as tf
 #sdim = length of hash signature. must divide length of in_layer/# of weight rows
 #num_tables = how many hash tables to compare across
 #cr = compression rate, percentage of rows of weight matrix to preserve
-def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
+def pg_vanilla(in_layer,weight, sdim, num_tables, cr, batch=1):
     
     #Parameters:
     #limit = total number of required neurons
@@ -32,7 +32,7 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
         return match_indices
 
     n=weight.shape[1]
-    thresh=int(cr*weight.shape[0])
+    thresh=int(cr*weight.shape[0]/batch)
     inds=[]
     #Loop over the desired number of tables.
     for _ in range(num_tables):
@@ -68,7 +68,7 @@ def slide_vanilla(in_layer,weight, sdim, num_tables, cr):
         return match_indices
 
     n=weight.shape[1]
-    thresh=int(cr*weight.shape[0])
+    thresh=int(cr*weight.shape[0]/batch)
     inds=[]
     #Loop over the desired number of tables.
     for _ in range(num_tables):
