@@ -7,7 +7,7 @@ from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 import time
 
 
-def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type="pg_vanilla"):
+def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type="pg_avg"):
 
     # get input layer for LSH
     feature_extractor = tf.keras.Model(
@@ -117,8 +117,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 )
                 print("Seen so far: %s samples" % total_batches)
 
-            if step == 2:
-                break
+            # if step == 2:
+             #   break
 
         # reset accuracy statistics for next epoch
         top1.reset()

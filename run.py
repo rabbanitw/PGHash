@@ -52,7 +52,7 @@ if __name__ == '__main__':
     layer_shapes, layer_sizes = get_model_architecture(model)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
-    batch_size = 64
+    batch_size = 256
     epochs = 2
 
     if lsh:

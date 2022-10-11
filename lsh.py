@@ -2,6 +2,7 @@ import numpy as np
 import random
 import tensorflow as tf
 from tqdm import tqdm
+import sklearn.metrics as sn
 import time
 
 #Takes a layer input and determines which weights are cosin (dis)similar via PGHash
@@ -26,15 +27,11 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
         # Apply PGHash to weights.
         sig2 = np.heaviside(pg_mat@vectors, 0)
 
-        # Compute Hamming Distance
-        bs = sig1.shape[1]
+        # convert to base 10
+        input_vals = sig1.T.dot(1 << np.arange(sig1.T.shape[-1]))
+        weight_vals = sig2.T.dot(1 << np.arange(sig2.T.shape[-1]))
 
-        # Find matching values
-        match_indices = []
-        for i in range(bs):
-            match_indices.append(np.where(np.all(sig2 == sig1[:, i, None], axis=0))[0])
-
-        return np.concatenate(match_indices)
+        return np.concatenate([np.where(weight_vals == i)[0] for i in input_vals])
 
     n, cols = weight.shape
     thresh = int(cols * cr)
@@ -115,23 +112,16 @@ def pg_avg(in_layer, weight, sdim, num_tables, cr):
         sig2 = np.heaviside(pg_mat@vectors, 0)
 
         # Compute Hamming Distance
-        bs = sig1.shape[1]
-        num_output = vectors.shape[1]
+        v = sn.DistanceMetric.get_metric("hamming").pairwise(sig2.T, sig1.T) * sig2.T.shape[-1]
 
-        # Use if needed to save memory
-        dists = np.empty((bs, num_output))
-        for i in range(bs):
-            sig_tile = np.tile(sig1[:, i, None], num_output)
-            dists[i, :] = np.count_nonzero(sig_tile != sig2, axis=0)
-
-        return dists
+        return v.T
 
     n, cols = weight.shape
     bs = in_layer.shape[0]
     ham_dists = np.zeros((bs, cols))
     thresh = int(cols*cr)
     # Loop over the desired number of tables.
-    for _ in range(num_tables):
+    for _ in tqdm(range(num_tables)):
         ham_dists += pghash(in_layer, weight, n, sdim)
 
     # pick just the largest differences
