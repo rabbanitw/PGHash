@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from mpi4py import MPI
-from unpack import flatten_weights, unflatten_weights
+from unpack import flatten_weights, unflatten_weights, update_full_model, get_sub_model
 
 
 class DecentralizedSGD:
@@ -176,7 +176,8 @@ class LSHCentralizedSGD:
     """
         centralized averaging, allowing periodic averaging
         """
-    def __init__(self, rank, size, comm, influence, layer_shapes, layer_sizes, i1, i2):
+    def __init__(self, rank, size, comm, influence, layer_shapes, layer_sizes, i1, i2,
+                 start_idx_w=((135909 * 128) + 128 + (4 * 128))):
         self.comm = comm
         self.rank = rank
         self.size = size
@@ -187,44 +188,33 @@ class LSHCentralizedSGD:
         self.i2 = i2
         self.iter = 0
         self.comm_iter = 0
+        self.start_idx_w = start_idx_w
 
-    def reset_model(self, model):
-        # Reset local models to be the averaged model
-        new_weights = unflatten_weights(self.recv_buffer, self.layer_shapes, self.layer_sizes)
+    def average(self, model, full_model, cur_idx, start_idx_b):
+
+        # update full model before averaging
+        weights = model.get_weights()
+        w = weights[-2]
+        b = weights[-1]
+        full_model = update_full_model(full_model, w, b, cur_idx, start_idx_b)
+
+        # create receiving buffer
+        recv_buffer = np.empty_like(full_model)
+
+        # perform averaging
+        tic = time.time()
+        MPI.COMM_WORLD.Allreduce(self.influence*full_model, recv_buffer, op=MPI.SUM)
+        toc = time.time()
+
+        # set new sub-model
+        w, b = get_sub_model(recv_buffer, cur_idx, start_idx_b)
+        sub_model = np.concatenate((recv_buffer[:self.start_idx_w], w.flatten(), b.flatten()))
+        new_weights = unflatten_weights(sub_model, self.layer_shapes, self.layer_sizes)
         model.set_weights(new_weights)
 
-    def prepare_comm_buffer(self, model):
-        model_weights = model.get_weights()
-        # flatten tensor weights
-        self.send_buffer = flatten_weights(model_weights)
-        self.recv_buffer = np.zeros_like(self.send_buffer)
+        return recv_buffer, toc - tic
 
-    def model_sync(self, model):
-
-        # necessary preprocess
-        self.prepare_comm_buffer(model)
-
-        # perform all-reduce to synchronize initial models across all clients
-        MPI.COMM_WORLD.Allreduce(self.send_buffer, self.recv_buffer, op=MPI.SUM)
-        # divide by total workers to get average model
-        self.recv_buffer = self.recv_buffer / self.size
-
-        # update local models
-        self.reset_model(model)
-        return unflatten_weights(self.recv_buffer, self.layer_shapes, self.layer_sizes)
-
-    def average(self, model):
-        # necessary preprocess
-        self.prepare_comm_buffer(model)
-        # perform all-reduce to synchronize initial models across all clients
-        tic = time.time()
-        MPI.COMM_WORLD.Allreduce(self.influence*self.send_buffer, self.recv_buffer, op=MPI.SUM)
-        toc = time.time()
-        # update local models
-        self.reset_model(model)
-        return toc - tic
-
-    def communicate(self, model):
+    def communicate(self, model, full_model, cur_idx, start_idx_b):
         # Have to have this here because of the case that i1 = 0 (cant do 0 % 0)
         self.iter += 1
         comm_time = 0
@@ -232,11 +222,12 @@ class LSHCentralizedSGD:
         if self.iter % (self.i1+1) == 0:
             self.comm_iter += 1
             # decentralized averaging according to activated topology
-            comm_time += self.average(model)
+            full_model, t = self.average(model, full_model, cur_idx, start_idx_b)
+            comm_time += t
             # I2: Number of Consecutive 1-Step Averaging
             if self.comm_iter % self.i2 == 0:
                 self.comm_iter = 0
             else:
                 # decrease iteration by one in order to run another one update and average step (I2 communication)
                 self.iter -= 1
-        return comm_time
+        return full_model, comm_time
