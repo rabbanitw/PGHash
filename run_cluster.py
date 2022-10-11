@@ -21,6 +21,11 @@ if __name__ == '__main__':
     tf.random.set_seed(randomSeed + rank)
     np.random.seed(randomSeed)
 
+    # split up GPUs
+    gpu_names = tf.config.list_physical_devices('GPU')
+    num_gpus = len(gpu_names)
+    gpu_id = rank % num_gpus
+
     # hashing parameters
     sdim = 8
     num_tables = 50
@@ -33,27 +38,29 @@ if __name__ == '__main__':
     num_clusters = None
     G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
-    # initialize model
-    initializer = tf.keras.initializers.GlorotUniform()
-    initial_final_dense = initializer(shape=(128, 670091)).numpy()
-    final_dense_shape = initial_final_dense.T.shape
-    num_c_layers = int(cr*670091)
+    with tf.device(gpu_names[gpu_id]):
 
-    if lsh:
-        worker_layer_dims = [135909, 128, num_c_layers]
+        # initialize model
+        initializer = tf.keras.initializers.GlorotUniform()
+        initial_final_dense = initializer(shape=(128, 670091)).numpy()
+        final_dense_shape = initial_final_dense.T.shape
+        num_c_layers = int(cr*670091)
 
-    else:
-        worker_layer_dims = [135909, 128, 670091]
+        if lsh:
+            worker_layer_dims = [135909, 128, num_c_layers]
 
-    model = SparseNeuralNetwork(worker_layer_dims)
+        else:
+            worker_layer_dims = [135909, 128, 670091]
 
-    full_model = None
-    # get model architecture
-    layer_shapes, layer_sizes = get_model_architecture(model)
+        model = SparseNeuralNetwork(worker_layer_dims)
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
-    batch_size = 64
-    epochs = 2
+        full_model = None
+        # get model architecture
+        layer_shapes, layer_sizes = get_model_architecture(model)
+
+        optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+        batch_size = 64
+        epochs = 2
 
     if lsh:
         partial_model = flatten_weights(model.get_weights())

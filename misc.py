@@ -49,7 +49,7 @@ class Recorder(object):
         self.record_avg_training_acc5 = list()
         self.rank = rank
         now = datetime.now()
-        self.start_time = now.strftime("%m/%d/%Y/%H:%M:%S")
+        self.start_time = now.strftime("%m/%d/%Y/%H:%M")
         self.start_time = self.start_time.replace(r'/', '-')
         self.saveFolderName = folderName + '/' + hash_type + '-' + self.start_time
         if rank == 0 and not os.path.isdir(self.saveFolderName):

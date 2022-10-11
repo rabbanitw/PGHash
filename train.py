@@ -117,6 +117,9 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 )
                 print("Seen so far: %s samples" % total_batches)
 
+            if step == 2:
+                break
+
         # reset accuracy statistics for next epoch
         top1.reset()
         top5.reset()
