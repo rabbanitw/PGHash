@@ -196,6 +196,9 @@ class LSHCentralizedSGD:
         weights = model.get_weights()
         w = weights[-2]
         b = weights[-1]
+
+        # update the first part of the model as well!
+
         full_model = update_full_model(full_model, w, b, cur_idx, start_idx_b)
 
         # create receiving buffer

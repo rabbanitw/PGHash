@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from sparse_bce import sparse_bce, sparse_bce_lsh
 from accuracy import compute_accuracy, AverageMeter
-from unpack import update_full_model, get_sub_model, get_full_dense
+from unpack import get_sub_model, get_full_dense
 from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 import time
 

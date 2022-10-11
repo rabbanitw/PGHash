@@ -49,3 +49,7 @@ def get_sub_model(full_model, idx, start_idx_b, start_idx_w=((135909 * 128) + 12
 def get_full_dense(full_model, dense_shape=(670091, 128), start_idx=((135909 * 128) + 128 + (4 * 128)),
                    end_idx=((135909 * 128) + 128 + (4 * 128) + 128*670091)):
     return full_model[start_idx:end_idx].reshape(dense_shape).T
+
+
+def get_partial_model(full_model, layer_shapes, layer_sizes, end_idx=((135909 * 128) + 128 + (4 * 128))):
+    return unflatten_weights(full_model[:end_idx], layer_shapes, layer_sizes)

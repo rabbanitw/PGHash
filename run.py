@@ -28,8 +28,6 @@ if __name__ == '__main__':
     G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
     # initialize model
-    layer_dims = [135909, 128, 670091]
-
     initializer = tf.keras.initializers.GlorotUniform()
     initial_final_dense = initializer(shape=(128, 670091)).numpy()
     final_dense_shape = initial_final_dense.T.shape
