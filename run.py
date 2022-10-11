@@ -69,7 +69,7 @@ if __name__ == '__main__':
     train_data, test_data = load_amazon670(rank, size, batch_size)
 
     print('Beginning training...')
-    train(model, optimizer, communicator, train_data, test_data, full_model, epochs)
+    train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs)
 
     '''
         weights = model.get_weights()

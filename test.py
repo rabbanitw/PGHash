@@ -3,7 +3,7 @@ import tensorflow as tf
 from mlp import SparseNeuralNetwork
 from dataloader import load_amazon670
 from sparse_bce import sparse_bce
-from accuracy import compute_accuracy
+from misc import compute_accuracy
 import time
 
 
