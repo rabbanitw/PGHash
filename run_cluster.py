@@ -36,7 +36,7 @@ if __name__ == '__main__':
     graph_type = 'ring'
     weight_type = None
     num_clusters = None
-    G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
+    # G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
     with tf.device(gpu_names[gpu_id]):
 
@@ -59,8 +59,8 @@ if __name__ == '__main__':
         layer_shapes, layer_sizes = get_model_architecture(model)
 
         optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
-        batch_size = 64
-        epochs = 2
+        batch_size = 256
+        epochs = 10
 
     if lsh:
         partial_model = flatten_weights(model.get_weights())
@@ -84,16 +84,3 @@ if __name__ == '__main__':
 
     print('Beginning training...')
     train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs)
-
-    '''
-        weights = model.get_weights()
-        w = weights[-2]
-        b = weights[-1]
-        b = np.ones_like(b)
-        idx = np.arange(2, num_c_layers+2)
-        s_idx_w = half_model_size
-        s_idx_b = full_model.size - 670091
-
-        full_model2 = update_full_model(full_model, w, b, idx, s_idx_w, s_idx_b)
-        w2, b2 = get_sub_model(full_model, idx, s_idx_w, s_idx_b)
-        '''
