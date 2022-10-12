@@ -13,7 +13,7 @@
 #SBATCH --nice=0
 #SBATCH --mail-type=END   # Valid type values are NONE, BEGIN, END, FAIL, REQUEUE
 
-module load openmpi
+module load mpi
 module load cuda/11.1.1
 
 mpirun -np 10 python run_cluster.py
