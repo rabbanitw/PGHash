@@ -53,6 +53,7 @@ if __name__ == '__main__':
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
     batch_size = 256
+    # batch_size = 64
     epochs = 2
 
     if lsh:

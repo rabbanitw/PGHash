@@ -7,7 +7,7 @@ from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 import time
 
 
-def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type="pg_avg"):
+def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type="pg_vanilla"):
 
     # get input layer for LSH
     feature_extractor = tf.keras.Model(

@@ -37,7 +37,7 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
     thresh = int(cols * cr)
     inds = []
     # Loop over the desired number of tables.
-    for _ in tqdm(range(num_tables)):
+    for _ in range(num_tables):
         inds.append(pghash(in_layer, weight, n, sdim))
     inds, frequency = np.unique(np.concatenate(inds), return_counts=True)
 
@@ -123,7 +123,7 @@ def pg_avg(in_layer, weight, sdim, num_tables, cr):
     thresh = int(cols*cr)
     ham_dists = np.zeros(cols)
     # Loop over the desired number of tables.
-    for _ in tqdm(range(num_tables)):
+    for _ in range(num_tables):
         ham_dists += pghash(in_layer, weight, n, sdim)
 
     # pick just the largest differences
