@@ -102,6 +102,7 @@ def pg_avg(in_layer, weight, sdim, num_tables, cr):
     #limit = total number of required neurons
     def pghash(in_layers, vectors, n, sdim):
 
+        t = time.time()
         # create gaussian matrix
         pg_mat = (1/int(n/sdim))*np.tile(np.random.normal(size=(sdim, sdim)), int(np.ceil(n/sdim)))[:, :n]
 
@@ -113,19 +114,20 @@ def pg_avg(in_layer, weight, sdim, num_tables, cr):
 
         # Compute Hamming Distance
         v = sn.DistanceMetric.get_metric("hamming").pairwise(sig2.T, sig1.T) * sig2.T.shape[-1]
+        # print(time.time()-t)
 
-        return v.T
+        return np.sum(v.T, axis=0)
 
     n, cols = weight.shape
     bs = in_layer.shape[0]
-    ham_dists = np.zeros((bs, cols))
     thresh = int(cols*cr)
+    ham_dists = np.zeros(cols)
     # Loop over the desired number of tables.
     for _ in tqdm(range(num_tables)):
         ham_dists += pghash(in_layer, weight, n, sdim)
 
     # pick just the largest differences
-    avg_ham_dists = -np.sum(ham_dists, axis=0) / (bs*num_tables)
+    avg_ham_dists = -ham_dists / (bs*num_tables)
     '''
     # Use for largest AND smallest differences
     avg_ham_dists = np.abs(ham_dists - (sdim / 2) * num_tables)
