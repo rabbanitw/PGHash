@@ -21,6 +21,10 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type="pg_vani
         return pg_vanilla(in_layer, final_dense_w, sdim, num_tables, cr)
     elif hash_type == "pg_avg":
         return pg_avg(in_layer, final_dense_w, sdim, num_tables, cr)
+    elif hash_type == "slide_vanilla":
+        return slide_vanilla(in_layer, final_dense_w, sdim, num_tables, cr)
+    elif hash_type == "slide_avg":
+        return slide_avg(in_layer, final_dense_w, sdim, num_tables, cr)
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, sdim=8, num_tables=50,
