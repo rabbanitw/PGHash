@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from dataloader_cluster import load_amazon670
-from train import train
+from train_cluster import train
 from network import Graph
 from communicators import DecentralizedSGD, CentralizedSGD, LSHCentralizedSGD
 from mlp import SparseNeuralNetwork
@@ -31,6 +31,7 @@ if __name__ == '__main__':
         gpu_names.append(gpu.name)
     num_gpus = len(gpu_names)
     gpu_id = rank % num_gpus
+    gpu = gpu_names[gpu_id]
 
     # hashing parameters
     sdim = 8
@@ -57,7 +58,7 @@ if __name__ == '__main__':
         worker_layer_dims = [135909, 128, 670091]
 
     # Load compressed model onto designated GPU
-    with tf.device(gpu_names[gpu_id]):
+    with tf.device(gpu):
 
         model = SparseNeuralNetwork(worker_layer_dims)
 
@@ -92,5 +93,5 @@ if __name__ == '__main__':
         train_data, test_data = load_amazon670(rank, size, batch_size)
 
     print('Beginning training...')
-    train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs)
+    train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu)
 
