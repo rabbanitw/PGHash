@@ -13,8 +13,8 @@ def convert_sparse_matrix_to_sparse_tensor(X):
 def load_amazon670(rank, size, batch_size):
 
     # load data
-    features, labels, num_samples, num_features, num_labels = data_utils.read_data('Data/Amazon670k/train.txt')
-    features_t, labels_t, num_labels_t, num_features_t, num_labels_t = data_utils.read_data('Data/Amazon670k/test.txt')
+    features, labels, num_samples, num_features, num_labels = data_utils.read_data('Data/train.txt')
+    features_t, labels_t, num_labels_t, num_features_t, num_labels_t = data_utils.read_data('Data/test.txt')
 
     # partition data amongst workers
     worker_features = partition_sparse_dataset(features, rank, size)

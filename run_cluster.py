@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from dataloader import load_amazon670
+from dataloader_cluster import load_amazon670
 from train import train
 from network import Graph
 from communicators import DecentralizedSGD, CentralizedSGD, LSHCentralizedSGD
@@ -88,8 +88,8 @@ if __name__ == '__main__':
             # communicator = DecentralizedSGD(rank, sieze, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
             communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
 
-    print('Loading and partitioning data...')
-    train_data, test_data = load_amazon670(rank, size, batch_size)
+        print('Loading and partitioning data...')
+        train_data, test_data = load_amazon670(rank, size, batch_size)
 
     print('Beginning training...')
     train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs)
