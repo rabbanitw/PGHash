@@ -85,8 +85,6 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 else:
                     loss_value = sparse_bce(y_batch_train, y_pred)
 
-
-                print(y_pred.shape)
                 # compute accuracy for the minibatch (top 1 and 5) & store accuracy and loss values
                 rec_init = time.time()
                 acc1 = compute_accuracy_lsh(y_batch_train, y_pred, cur_idx, topk=1)

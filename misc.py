@@ -6,28 +6,28 @@ from datetime import datetime
 
 def compute_accuracy(y_true, y_pred, topk=1):
     result = tf.math.top_k(y_pred, k=topk)
-    r, c = y_pred.get_shape()
+    batches, c = y_pred.get_shape()
     true_idx = y_true.indices.numpy()
     count = 0
-    for i in range(r):
+    for i in range(batches):
         for j in range(topk):
             top_idx = np.array([i, result.indices[i, j].numpy()])
             count += int(np.any(np.all(top_idx == true_idx, axis=1)))
-    return count/(r*topk)
+    return count/(batches*topk)
 
 
 def compute_accuracy_lsh(y_true, y_pred, lsh_idx, topk=1):
     result = tf.math.top_k(y_pred, k=topk)
-    r, c = y_pred.get_shape()
+    batches, c = y_pred.get_shape()
     true_idx = y_true.indices.numpy()
     result_idx = result.indices.numpy()
     count = 0
-    for i in range(r):
+    for i in range(batches):
         for j in range(topk):
             transform_idx_y = lsh_idx[result_idx[i, j]]
             top_idx = np.array([i, transform_idx_y])
             count += int(np.any(np.all(top_idx == true_idx, axis=1)))
-    return count/(r*topk)
+    return count/(batches*topk)
 
 
 class AverageMeter(object):
