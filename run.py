@@ -3,7 +3,7 @@ import numpy as np
 from dataloader import load_amazon670
 from train import train
 from network import Graph
-from communicators import DecentralizedSGD, CentralizedSGD, LSHCentralizedSGD
+from communicators import CentralizedSGD, LSHCentralizedSGD
 from mlp import SparseNeuralNetwork
 from unpack import get_model_architecture, flatten_weights
 from mpi4py import MPI
@@ -53,8 +53,7 @@ if __name__ == '__main__':
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
     batch_size = 256
-    # batch_size = 64
-    epochs = 2
+    epochs = 10
 
     if lsh:
         partial_model = flatten_weights(model.get_weights())
@@ -78,16 +77,3 @@ if __name__ == '__main__':
 
     print('Beginning training...')
     train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs)
-
-    '''
-        weights = model.get_weights()
-        w = weights[-2]
-        b = weights[-1]
-        b = np.ones_like(b)
-        idx = np.arange(2, num_c_layers+2)
-        s_idx_w = half_model_size
-        s_idx_b = full_model.size - 670091
-
-        full_model2 = update_full_model(full_model, w, b, idx, s_idx_w, s_idx_b)
-        w2, b2 = get_sub_model(full_model, idx, s_idx_w, s_idx_b)
-        '''

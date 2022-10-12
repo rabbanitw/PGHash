@@ -112,13 +112,10 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             # Log every 200 batches.
             if step % 5 == 0:
                 print(
-                    "Training loss (for one batch) at step %d: %.4f"
+                    "Training loss (for one batch) at step %d: %.6f"
                     % (step, float(loss_value))
                 )
                 print("Seen so far: %s samples" % total_batches)
-
-            # if step == 2:
-             #   break
 
         # reset accuracy statistics for next epoch
         top1.reset()
