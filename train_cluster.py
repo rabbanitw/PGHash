@@ -7,7 +7,7 @@ from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 import time
 
 
-def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type="pg_vanilla"):
+def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
     # get input layer for LSH
     feature_extractor = tf.keras.Model(
@@ -28,7 +28,7 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type="pg_vani
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu, sdim=8, num_tables=50,
-          cr=0.1, steps_per_lsh=3, lsh=True, hash_type="pg_vanilla"):
+          cr=0.1, steps_per_lsh=3, lsh=True, hash_type="slide_avg"):
 
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -56,7 +56,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
                         # compute LSH
                         final_dense = get_full_dense(full_model)
-                        cur_idx = run_lsh(model, x_batch_train, final_dense, sdim, int(num_tables), cr)
+                        cur_idx = run_lsh(model, x_batch_train, final_dense, sdim, int(num_tables), cr,
+                                          hash_type)
 
                         # receive sub-model corresponding to the outputted indices
                         w, bias = get_sub_model(full_model, cur_idx, start_idx_b)
