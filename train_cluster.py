@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from sparse_bce import sparse_bce, sparse_bce_lsh
-from misc import compute_accuracy, AverageMeter, Recorder
+from misc import compute_accuracy, compute_accuracy_lsh, AverageMeter, Recorder
 from unpack import get_sub_model, get_full_dense
 from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 import time
@@ -89,8 +89,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
                         # compute accuracy for the minibatch (top 1 and 5) & store accuracy and loss values
                         rec_init = time.time()
-                        acc1 = compute_accuracy(y_batch_train, y_pred, topk=1)
-                        acc5 = compute_accuracy(y_batch_train, y_pred, topk=5)
+                        acc1 = compute_accuracy_lsh(y_batch_train, y_pred, cur_idx, topk=1)
+                        acc5 = compute_accuracy_lsh(y_batch_train, y_pred, cur_idx, topk=5)
                         losses.update(loss_value.numpy(), batch)
                         top1.update(acc1, batch)
                         top5.update(acc5, batch)
@@ -136,8 +136,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     for step, (x_batch_test, y_batch_test) in enumerate(test_data):
         y_pred = model(x_batch_test, training=False)
         # Update test metrics
-        acc1 = compute_accuracy(y_batch_test, y_pred, topk=1)
-        acc5 = compute_accuracy(y_batch_test, y_pred, topk=5)
+        acc1 = compute_accuracy_lsh(y_batch_test, y_pred, cur_idx, topk=1)
+        acc5 = compute_accuracy_lsh(y_batch_test, y_pred, cur_idx, topk=5)
         bs = x_batch_test.get_shape()[0]
         test_top1.update(acc1, bs)
         test_top5.update(acc5, bs)
