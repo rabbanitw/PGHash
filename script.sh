@@ -14,6 +14,7 @@
 #SBATCH --mail-type=END   # Valid type values are NONE, BEGIN, END, FAIL, REQUEUE
 
 module load mpi
-module load cuda/11.1.1
+module load cuda/11.4.4
+module load cudnn/v8.2.1
 
-mpirun -np 10 python run_cluster.py
+mpirun -np 2 python run_cluster.py --mca btl_openib_warn_no_device_params_found 0 --mca orte_base_help_aggregate 0 --mca btl ^openib ...
