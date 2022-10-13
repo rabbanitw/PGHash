@@ -28,8 +28,8 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
         return slide_avg(in_layer, final_dense_w, sdim, num_tables, cr)
 
 
-def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu, sdim=8, num_tables=50,
-          cr=0.1, steps_per_lsh=3, lsh=True, hash_type="pg_vanilla"):
+def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu, sdim, num_tables,
+          cr, steps_per_lsh=50, lsh=True, hash_type="pg_vanilla"):
 
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -89,7 +89,10 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
                         # Compute the loss value for this minibatch.
                         if lsh:
-                            loss_value = sparse_bce_lsh(y_batch_train, y_pred, cur_idx)
+                            y_true = tf.gather(tf.sparse.to_dense(y_batch_train), cur_idx, axis=1)
+                            loss_value = tf.reduce_mean(
+                                tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+                            # loss_value = sparse_bce_lsh(y_batch_train, y_pred, cur_idx)
                         else:
                             loss_value = sparse_bce(y_batch_train, y_pred)
 

@@ -94,7 +94,7 @@ if __name__ == '__main__':
 
     print('Beginning training...')
     full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs,
-                                     gpu, cpu)
+                                     gpu, cpu, sdim, num_tables, cr)
 
     recv_indices = None
     if rank == 0:
