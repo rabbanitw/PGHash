@@ -93,7 +93,7 @@ if __name__ == '__main__':
         train_data, test_data = load_amazon670(rank, size, batch_size)
 
     print('Beginning training...')
-    used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs,
+    full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs,
                                      gpu, cpu)
 
     recv_indices = None
@@ -103,3 +103,4 @@ if __name__ == '__main__':
 
     if rank == 0:
         np.save(saveFolder + '/global_weight_frequency.npy', recv_indices)
+        np.save(saveFolder + '/final_global_model.npy', full_model)

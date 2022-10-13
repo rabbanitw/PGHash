@@ -51,7 +51,7 @@ if __name__ == '__main__':
     # get model architecture
     layer_shapes, layer_sizes = get_model_architecture(model)
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
     batch_size = 256
     epochs = 10
 
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     train_data, test_data = load_amazon670(rank, size, batch_size)
 
     print('Beginning training...')
-    used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs)
+    full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs)
 
     recv_indices = None
     if rank == 0:
@@ -85,3 +85,4 @@ if __name__ == '__main__':
 
     if rank == 0:
         np.save(saveFolder+'/global_weight_frequency.npy', recv_indices)
+        np.save(saveFolder + '/final_global_model.npy', full_model)

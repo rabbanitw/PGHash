@@ -143,4 +143,4 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     print("Test Accuracy Top 1: %.4f" % (float(test_top1.avg),))
     print("Test Accuracy Top 1: %.4f" % (float(test_top5.avg),))
 
-    return used_idx, recorder.get_saveFolder()
+    return full_model, used_idx, recorder.get_saveFolder()
