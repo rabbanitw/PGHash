@@ -119,7 +119,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 # Log every 200 batches.
                 if step % 5 == 0:
                     print(
-                        "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 5 Accuracy %.2f [%d Total Samples]"
+                        "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 5 Accuracy %.4f [%d Total Samples]"
                         % (rank, step, (comp_time+comm_time), loss_value.numpy(), acc5, total_batches)
                     )
 
@@ -143,6 +143,6 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         test_top1.update(acc1, bs)
         test_top5.update(acc5, bs)
     print("Test Accuracy Top 1: %.4f" % (float(test_top1.avg),))
-    print("Test Accuracy Top 1: %.4f" % (float(test_top5.avg),))
+    print("Test Accuracy Top 5: %.4f" % (float(test_top5.avg),))
 
     return full_model, used_idx, recorder.get_saveFolder()
