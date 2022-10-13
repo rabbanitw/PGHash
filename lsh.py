@@ -31,6 +31,29 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
 
     n, cols = weight.shape
     thresh = int(cols * cr)
+
+    '''
+        def gen_idx(num_union, in_layer, weight, n, sdim):
+            idx_a = slidehash(in_layer, weight, n, sdim)
+            idx_b = slidehash(in_layer, weight, n, sdim)
+            for _ in range(num_union-1):
+                idx_a = np.union1d(idx_a, slidehash(in_layer, weight, n, sdim))
+                idx_b = np.union1d(idx_b, slidehash(in_layer, weight, n, sdim))
+            return np.intersect1d(idx_a, idx_b)
+        inds = gen_idx(3, in_layer, weight, n, sdim)
+        for i in range(8):
+            print(len(inds))
+            inds = np.intersect1d(inds, gen_idx(3, in_layer, weight, n, sdim))
+        '''
+
+    inds = pghash(in_layer, weight, n, sdim)
+    # Loop over the desired number of tables.
+    for i in range(num_tables - 1):
+        inds = np.intersect1d(inds, pghash(in_layer, weight, n, sdim))
+        if len(inds) <= thresh:
+            return inds
+
+    '''
     inds = []
     # Loop over the desired number of tables.
     for _ in range(num_tables):
@@ -51,6 +74,7 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
         possible_idx = np.setdiff1d(np.arange(cols), inds)
         new = np.random.choice(possible_idx, diff, replace=False)
         return np.concatenate((inds, new))
+    '''
 
 
 #Takes a layer input and determines which weights are cosin (dis)similar via PGHash

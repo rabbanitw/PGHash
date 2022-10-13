@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # hashing parameters
     sdim = 8
     num_tables = 50
-    cr = 0.005
+    cr = 0.1
     lsh = True
 
     # load base network topology

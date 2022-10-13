@@ -6,6 +6,9 @@ from datetime import datetime
 
 def compute_accuracy(y_true, y_pred, topk=1):
     result = tf.math.top_k(y_pred, k=topk)
+
+
+
     batches, c = y_pred.get_shape()
     true_idx = y_true.indices.numpy()
     count = 0
@@ -17,10 +20,9 @@ def compute_accuracy(y_true, y_pred, topk=1):
 
 
 def compute_accuracy_lsh(y_true, y_pred, lsh_idx, topk=1):
-    result = tf.math.top_k(y_pred, k=topk)
+    result_idx = find_topk(y_pred.numpy(), topk)
     batches, c = y_pred.get_shape()
     true_idx = y_true.indices.numpy()
-    result_idx = result.indices.numpy()
     count = 0
     for i in range(batches):
         for j in range(topk):
@@ -109,3 +111,15 @@ class Recorder(object):
         # with open(self.saveFolderName + '/ExpDescription', 'w') as f:
         #    f.write(str(self.args) + '\n')
         #    f.write(self.args.description + '\n')
+
+
+def find_topk(input, k, axis=1, ascending=False):
+    if not ascending:
+        input *= -1
+    ind = np.argpartition(input, k, axis=axis)
+    ind = np.take(ind, np.arange(k), axis=axis)  # k non-sorted indices
+    input = np.take_along_axis(input, ind, axis=axis)  # k non-sorted values
+    # sort within k elements
+    ind_part = np.argsort(input, axis=axis)
+    ind = np.take_along_axis(ind, ind_part, axis=axis)
+    return ind

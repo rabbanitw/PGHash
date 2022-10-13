@@ -29,7 +29,7 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, sdim, num_tables,
-          cr, steps_per_lsh=50, lsh=True, hash_type="slide_vanilla"):
+          cr, steps_per_lsh=1, lsh=True, hash_type="slide_vanilla"):
 
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -72,16 +72,6 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
                     model.set_weights(new_weights)
 
-                    '''
-                    # receive sub-model corresponding to the outputted indices
-                    w, bias = get_sub_model(full_model, cur_idx, start_idx_b)
-                    weights = model.get_weights()
-                    weights[-2] = w
-                    weights[-1] = bias
-                    # set the new model weight
-                    model.set_weights(weights)
-                    '''
-
                 lsh_time = time.time()-lsh_init_time
             else:
                 lsh_time = 0
@@ -91,6 +81,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 # The operations that the layer applies
                 # to its inputs are going to be recorded
                 # on the GradientTape.
+
+
                 y_pred = model(x_batch_train, training=True)
 
                 # Compute the loss value for this minibatch.
@@ -133,7 +125,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             # Log every 200 batches.
             if step % 5 == 0:
                 print(
-                    "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 5 Accuracy %.4f, "
+                    "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Accuracy %.4f, "
                     "Top 5 Accuracy %.4f [%d Total Samples]" % (rank, step, (comp_time + comm_time), loss_value.numpy(),
                                                                 acc1, acc5, total_batches)
                 )
