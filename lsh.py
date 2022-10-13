@@ -27,7 +27,6 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
         # convert to base 10
         input_vals = sig1.T.dot(1 << np.arange(sig1.T.shape[-1]))
         weight_vals = sig2.T.dot(1 << np.arange(sig2.T.shape[-1]))
-
         return np.concatenate([np.where(weight_vals == i)[0] for i in input_vals])
 
     n, cols = weight.shape
@@ -36,6 +35,11 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
     # Loop over the desired number of tables.
     for _ in range(num_tables):
         inds.append(pghash(in_layer, weight, n, sdim))
+        u_idx = np.unique(np.concatenate(inds))
+        idx_len = len(np.unique(np.concatenate(inds)))
+        if idx_len >= thresh:
+            return np.unique(np.concatenate(inds))
+
     inds, frequency = np.unique(np.concatenate(inds), return_counts=True)
 
     if len(inds) > thresh:
@@ -77,21 +81,28 @@ def slide_vanilla(in_layer,weight, sdim, num_tables, cr):
 
     n, cols = weight.shape
     thresh = int(cols * cr)
-    inds = []
-    # Loop over the desired number of tables.
-    for _ in range(num_tables):
-        inds.append(slidehash(in_layer, weight, n, sdim))
-    inds, frequency = np.unique(np.concatenate(inds), return_counts=True)
 
-    if len(inds) > thresh:
-        # choose the weights proportional to how frequently they pop-up
-        p = frequency / np.sum(frequency)
-        return np.random.choice(inds, thresh, p=p, replace=False)
-    else:
-        diff = thresh - len(inds)
-        possible_idx = np.setdiff1d(np.arange(cols), inds)
-        new = np.random.choice(possible_idx, diff, replace=False)
-        return np.concatenate((inds, new))
+    '''
+    def gen_idx(num_union, in_layer, weight, n, sdim):
+        idx_a = slidehash(in_layer, weight, n, sdim)
+        idx_b = slidehash(in_layer, weight, n, sdim)
+        for _ in range(num_union-1):
+            idx_a = np.union1d(idx_a, slidehash(in_layer, weight, n, sdim))
+            idx_b = np.union1d(idx_b, slidehash(in_layer, weight, n, sdim))
+        return np.intersect1d(idx_a, idx_b)
+    inds = gen_idx(3, in_layer, weight, n, sdim)
+    for i in range(8):
+        print(len(inds))
+        inds = np.intersect1d(inds, gen_idx(3, in_layer, weight, n, sdim))
+    '''
+
+    inds = slidehash(in_layer, weight, n, sdim)
+    # Loop over the desired number of tables.
+    for i in range(num_tables-1):
+        inds = np.intersect1d(inds, slidehash(in_layer, weight, n, sdim))
+        if len(inds) <= thresh:
+            return inds
+    return inds
     
 
 

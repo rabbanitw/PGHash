@@ -24,14 +24,14 @@ if __name__ == '__main__':
     # hashing parameters
     sdim = 8
     num_tables = 50
-    cr = 0.1
+    cr = 0.005
     lsh = True
 
     # load base network topology
     graph_type = 'ring'
     weight_type = None
     num_clusters = None
-    G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
+    # G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
     # initialize model
     initializer = tf.keras.initializers.GlorotUniform()
@@ -76,7 +76,8 @@ if __name__ == '__main__':
     train_data, test_data = load_amazon670(rank, size, batch_size)
 
     print('Beginning training...')
-    full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs)
+    full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data,
+                                                 full_model, epochs, sdim, num_tables, cr)
 
     recv_indices = None
     if rank == 0:

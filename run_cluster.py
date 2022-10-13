@@ -17,7 +17,7 @@ if __name__ == '__main__':
     rank = MPI.COMM_WORLD.Get_rank()
     size = MPI.COMM_WORLD.Get_size()
 
-    randomSeed = 1203
+    randomSeed = 105
 
     # set random seed
     tf.random.set_seed(randomSeed + rank)
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     graph_type = 'ring'
     weight_type = None
     num_clusters = None
-    G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
+    # G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
     # initialize full final dense layer (Glorot Uniform)
     sd = np.sqrt(6.0 / (128 + 670091))
@@ -68,7 +68,7 @@ if __name__ == '__main__':
 
         optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
         batch_size = 256
-        epochs = 10
+        epochs = 4
 
     # load full model onto CPU and NOT the GPU (due to memory issues)
     with tf.device(cpu):

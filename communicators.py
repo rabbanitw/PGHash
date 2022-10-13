@@ -217,7 +217,10 @@ class LSHCentralizedSGD:
 
         return recv_buffer, toc - tic
 
-    def communicate(self, model, full_model, cur_idx, start_idx_b):
+    def communicate(self, model, full_model, cur_idx, start_idx_b, layer_shapes, layer_sizes):
+        # update potentially changed layer shapes and sizes
+        self.layer_shapes = layer_shapes
+        self.layer_sizes = layer_sizes
         # Have to have this here because of the case that i1 = 0 (cant do 0 % 0)
         self.iter += 1
         comm_time = 0

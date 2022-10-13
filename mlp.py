@@ -13,7 +13,8 @@ def SparseNeuralNetwork(layer_dims, sparsity=True, training=True):
             x = tf.keras.layers.BatchNormalization()(x, training=training)
             x = tf.keras.activations.relu(x)
             x = DenseLayer(layer_dims[i])(x)
-    x = tf.keras.activations.sigmoid(x)
+    # x = tf.keras.activations.softmax(x)
+    # x = tf.keras.activations.sigmoid(x)
     # create the model
     model = tf.keras.Model(inputs, x)
     # return the constructed network architecture

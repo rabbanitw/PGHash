@@ -28,7 +28,7 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu, sdim=8, num_tables=50,
-          cr=0.1, steps_per_lsh=3, lsh=True, hash_type="slide_avg"):
+          cr=0.1, steps_per_lsh=3, lsh=True, hash_type="pg_vanilla"):
 
     top1 = AverageMeter()
     top5 = AverageMeter()
