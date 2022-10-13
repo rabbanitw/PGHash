@@ -36,7 +36,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     recorder = Recorder('Output', rank, hash_type)
     total_batches = 0
     start_idx_b = full_model.size - 670091
-    used_idx = None
+    used_idx = np.zeros(670091)
     cur_idx = None
 
     for epoch in range(epochs):
@@ -58,6 +58,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     # compute LSH
                     final_dense = get_full_dense(full_model)
                     cur_idx = run_lsh(model, x_batch_train, final_dense, sdim, int(num_tables), cr)
+                    used_idx[cur_idx] += 1
 
                     # receive sub-model corresponding to the outputted indices
                     w, bias = get_sub_model(full_model, cur_idx, start_idx_b)
@@ -116,10 +117,9 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             # Log every 200 batches.
             if step % 5 == 0:
                 print(
-                    "Training loss (for one batch) at step %d: %.6f"
-                    % (step, float(loss_value))
+                    "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 5 Accuracy %.4f [%d Total Samples]"
+                    % (rank, step, (comp_time + comm_time), loss_value.numpy(), acc5, total_batches)
                 )
-                print("Seen so far: %s samples" % total_batches)
 
         # reset accuracy statistics for next epoch
         top1.reset()
@@ -142,3 +142,5 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         test_top5.update(acc5, bs)
     print("Test Accuracy Top 1: %.4f" % (float(test_top1.avg),))
     print("Test Accuracy Top 1: %.4f" % (float(test_top5.avg),))
+
+    return used_idx, recorder.get_saveFolder()

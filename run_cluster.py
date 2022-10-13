@@ -93,5 +93,13 @@ if __name__ == '__main__':
         train_data, test_data = load_amazon670(rank, size, batch_size)
 
     print('Beginning training...')
-    train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu)
+    used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs,
+                                     gpu, cpu)
 
+    recv_indices = None
+    if rank == 0:
+        recv_indices = np.empty_like(used_indices)
+    MPI.COMM_WORLD.Reduce(used_indices, recv_indices, op=MPI.SUM, root=0)
+
+    if rank == 0:
+        np.save(saveFolder + '/global_weight_frequency.npy', recv_indices)

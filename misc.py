@@ -69,6 +69,9 @@ class Recorder(object):
         if rank == 0 and not os.path.isdir(self.saveFolderName):
             os.mkdir(self.saveFolderName)
 
+    def get_saveFolder(self):
+        return self.saveFolderName
+
     def add_new(self, epoch_time, comp_time, comm_time, lsh_time, acc1, acc5, losses,
                 avg_acc1, avg_acc5, avg_losses):
         self.record_epoch_times.append(epoch_time)
