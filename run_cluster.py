@@ -36,7 +36,7 @@ if __name__ == '__main__':
     # hashing parameters
     sdim = 8
     num_tables = 50
-    cr = 0.1
+    cr = 0.02
     lsh = True
 
     # load base network topology
@@ -67,8 +67,8 @@ if __name__ == '__main__':
         layer_shapes, layer_sizes = get_model_architecture(model)
 
         optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
-        batch_size = 256
-        epochs = 4
+        batch_size = 128
+        epochs = 15
 
     # load full model onto CPU and NOT the GPU (due to memory issues)
     with tf.device(cpu):

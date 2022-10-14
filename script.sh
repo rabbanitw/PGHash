@@ -2,8 +2,8 @@
 
 # Lines that begin with #SBATCH specify commands to be used by SLURM for scheduling
 
-#SBATCH --job-name=PG_Vanilla2     # sets the job name if not set from environment
-#SBATCH --time=30:45:00     # how long you think your job will take to complete; format=hh:mm:ss
+#SBATCH --job-name=pg_vanilla2     # sets the job name if not set from environment
+#SBATCH --time=10:45:00     # how long you think your job will take to complete; format=hh:mm:ss
 #SBATCH --account=scavenger    # set QOS, this will determine what resources can be requested
 #SBATCH --qos=scavenger    # set QOS, this will determine what resources can be requested
 #SBATCH --partition=scavenger

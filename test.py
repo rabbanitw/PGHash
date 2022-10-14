@@ -35,36 +35,18 @@ if __name__ == '__main__':
     # loss = sparse_bce_lsh(c, b, np.arange(50))
     # print(loss)
     '''
-    '''
+    #'''
     bce = tf.keras.losses.BinaryCrossentropy(from_logits=False)
-    tr, te = load_amazon670(0, 1, 256)
+    tr, te = load_amazon670(0, 1, 1)
     for (x, y) in tr:
         t = time.time()
-        yy = tf.sparse.to_dense(y)
+        # yy = tf.sparse.to_dense(y)
         print(time.time() - t)
-        # acc = compute_accuracy_lsh(y, tf.sparse.to_dense(y), np.arange(y.shape[1]), topk=5)
-        loss = bce(yy, yy)
+        acc = compute_accuracy_lsh(y, tf.sparse.to_dense(y), np.arange(y.shape[1]), topk=5)
         #acc2 = compute_accuracy(yy, yy, topk=5)
-        print(loss)
+        print(acc)
         print(time.time()-t)
         break
     a = 0
-    '''
-
-
-    def topk(input, k, axis=1, ascending=False):
-        if not ascending:
-            input *= -1
-        ind = np.argpartition(input, k, axis=axis)
-        ind = np.take(ind, np.arange(k), axis=axis)  # k non-sorted indices
-        input = np.take_along_axis(input, ind, axis=axis)  # k non-sorted values
-        # sort within k elements
-        ind_part = np.argsort(input, axis=axis)
-        ind = np.take_along_axis(ind, ind_part, axis=axis)
-        return ind
-
-    a = np.random.rand(5, 5)
-    k = 2
-    print(a)
-    print(topk(a, k))
+    #'''
 

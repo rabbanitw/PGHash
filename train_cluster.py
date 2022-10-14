@@ -42,6 +42,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     cur_idx = None
 
     for epoch in range(epochs):
+
         print("\nStart of epoch %d" % (epoch,))
         with tf.device(cpu):
             # Iterate over the batches of the dataset.
@@ -64,6 +65,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
                         worker_layer_dims = [135909, 128, len(cur_idx)]
                         with tf.device(gpu):
+                            tf.keras.backend.clear_session()
                             model = SparseNeuralNetwork(worker_layer_dims)
                         layer_shapes, layer_sizes = get_model_architecture(model)
 
@@ -77,6 +79,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 else:
                     lsh_time = 0
 
+                y_no_sparse = tf.sparse.to_dense(y_batch_train)
                 with tf.device(gpu):
                     with tf.GradientTape() as tape:
 
@@ -89,7 +92,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
                         # Compute the loss value for this minibatch.
                         if lsh:
-                            y_true = tf.gather(tf.sparse.to_dense(y_batch_train), cur_idx, axis=1)
+                            y_true = tf.gather(y_no_sparse, cur_idx, axis=1)
                             loss_value = tf.reduce_mean(
                                 tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
                             # loss_value = sparse_bce_lsh(y_batch_train, y_pred, cur_idx)
@@ -140,6 +143,28 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         losses.reset()
         # Save data to output folder
         recorder.save_to_file()
+
+        if rank == 0:
+            test_top1 = AverageMeter()
+            test_top5 = AverageMeter()
+            with tf.device(cpu):
+                worker_layer_dims = [135909, 128, 670091]
+                model = SparseNeuralNetwork(worker_layer_dims)
+                layer_shapes, layer_sizes = get_model_architecture(model)
+                # set new sub-model
+                w, b = get_sub_model(full_model, np.arange(670091), start_idx_b)
+                sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
+                new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
+                model.set_weights(new_weights)
+                for step, (x_batch_test, y_batch_test) in enumerate(test_data):
+                    y_pred = model(x_batch_test, training=False)
+                    acc1 = compute_accuracy_lsh(y_batch_test, y_pred, np.arange(670091), topk=1)
+                    acc5 = compute_accuracy_lsh(y_batch_test, y_pred, np.arange(670091), topk=5)
+                    bs = x_batch_test.get_shape()[0]
+                    test_top1.update(acc1, bs)
+                    test_top5.update(acc5, bs)
+                print("Test Accuracy Top 1: %.4f" % (float(test_top1.avg),))
+                print("Test Accuracy Top 5: %.4f" % (float(test_top5.avg),))
 
     # Run a test loop at the end of training
     test_top1 = AverageMeter()
