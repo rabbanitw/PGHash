@@ -68,7 +68,7 @@ if __name__ == '__main__':
 
         optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
         batch_size = 128
-        epochs = 15
+        epochs = 30
 
     # load full model onto CPU and NOT the GPU (due to memory issues)
     with tf.device(cpu):

@@ -29,7 +29,7 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, sdim, num_tables,
-          cr, steps_per_lsh=1, lsh=True, hash_type="slide_vanilla"):
+          cr, steps_per_lsh=20, lsh=True, hash_type="slide_vanilla"):
 
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -43,6 +43,11 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
     for epoch in range(epochs):
         print("\nStart of epoch %d" % (epoch,))
+
+        if epoch == 1:
+            steps_per_lsh = 50
+        elif epoch == 2:
+            steps_per_lsh = 100
 
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
@@ -149,6 +154,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         bs = x_batch_test.get_shape()[0]
         test_top1.update(acc1, bs)
         test_top5.update(acc5, bs)
+        print(acc5)
     print("Test Accuracy Top 1: %.4f" % (float(test_top1.avg),))
     print("Test Accuracy Top 5: %.4f" % (float(test_top5.avg),))
 

@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
     batch_size = 256
-    epochs = 10
+    epochs = 5
 
     if lsh:
         partial_model = flatten_weights(model.get_weights())
