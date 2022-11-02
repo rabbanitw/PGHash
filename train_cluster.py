@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from sparse_bce import sparse_bce, sparse_bce_lsh
 from misc import compute_accuracy, compute_accuracy_lsh, AverageMeter, Recorder
-from unpack import get_sub_model, get_full_dense, unflatten_weights, get_model_architecture
+from unpack import get_sub_model, get_full_dense, unflatten_weights, flatten_weights, get_model_architecture
 from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 from mlp import SparseNeuralNetwork
 import time
@@ -29,7 +29,7 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu, sdim, num_tables,
-          num_f, num_l, hls, cr, steps_per_lsh=50, lsh=True, hash_type="pg_vanilla"):
+          num_f, num_l, hls, cr, lsh, hash_type, steps_per_lsh):
 
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -124,6 +124,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                                                                      layer_shapes, layer_sizes)
                 else:
                     comm_time = communicator.communicate(model)
+                    full_model = flatten_weights(model.get_weights())
 
                 recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, acc5, loss_value.numpy(),
                                  top1.avg, top5.avg, losses.avg)

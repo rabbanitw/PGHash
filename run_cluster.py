@@ -18,12 +18,14 @@ if __name__ == '__main__':
     # Add an argument
     parser.add_argument('--dataset', type=str, default='Amazon670k')
     parser.add_argument('--graph_type', type=str, default='ring')
+    parser.add_argument('--hash_type', type=str, default='slide_vanilla')
     parser.add_argument('--randomSeed', type=int, default=1203)
     parser.add_argument('--lsh', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--sdim', type=int, default=8)
     parser.add_argument('--num_tables', type=int, default=50)
     parser.add_argument('--cr', type=int, default=0.1)
     parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--steps_per_lsh', type=int, default=50)
     parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
 
@@ -44,6 +46,8 @@ if __name__ == '__main__':
     num_tables = args.num_tables
     cr = args.cr
     lsh = args.lsh
+    hash_type = args.hash_type
+    steps_per_lsh = args.steps_per_lsh
 
     # load base network topology
     graph_type = args.graph_type
@@ -120,7 +124,7 @@ if __name__ == '__main__':
     print('Beginning training...')
     full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data,
                                                  full_model, epochs, gpu, cpu, sdim, num_tables,
-                                                 n_features, n_labels, hls, cr)
+                                                 n_features, n_labels, hls, cr, lsh, hash_type, steps_per_lsh)
 
     recv_indices = None
     if rank == 0:

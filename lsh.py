@@ -49,9 +49,9 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
     inds = pghash(in_layer, weight, n, sdim)
     # Loop over the desired number of tables.
     for i in range(num_tables - 1):
-        inds = np.intersect1d(inds, pghash(in_layer, weight, n, sdim))
         if len(inds) <= thresh:
             return inds
+        inds = np.intersect1d(inds, pghash(in_layer, weight, n, sdim))
 
     '''
     inds = []
@@ -123,9 +123,9 @@ def slide_vanilla(in_layer,weight, sdim, num_tables, cr):
     inds = slidehash(in_layer, weight, n, sdim)
     # Loop over the desired number of tables.
     for i in range(num_tables-1):
-        inds = np.intersect1d(inds, slidehash(in_layer, weight, n, sdim))
         if len(inds) <= thresh:
             return inds
+        inds = np.intersect1d(inds, slidehash(in_layer, weight, n, sdim))
     return inds
     
 

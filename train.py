@@ -29,7 +29,7 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, sdim, num_tables,
-          num_f, num_l, hls, cr, steps_per_lsh=20, lsh=True, hash_type="slide_vanilla"):
+          num_f, num_l, hls, cr, lsh, hash_type, steps_per_lsh):
 
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -66,6 +66,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     final_dense = get_full_dense(full_model, num_f, num_l, hls)
                     cur_idx = run_lsh(model, x_batch_train, final_dense, sdim, int(num_tables), cr, hash_type)
                     used_idx[cur_idx] += 1
+                    print(len(cur_idx))
+                    print(num_l)
 
                     worker_layer_dims = [num_f, hls, len(cur_idx)]
                     model = SparseNeuralNetwork(worker_layer_dims)
@@ -142,6 +144,27 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         # Save data to output folder
         recorder.save_to_file()
 
+        if rank == 0:
+            test_top1 = AverageMeter()
+            test_top5 = AverageMeter()
+            worker_layer_dims = [num_f, hls, num_l]
+            model = SparseNeuralNetwork(worker_layer_dims)
+            layer_shapes, layer_sizes = get_model_architecture(model)
+            # set new sub-model
+            w, b = get_sub_model(full_model, np.arange(num_l), start_idx_b, num_f, hls)
+            sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
+            new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
+            model.set_weights(new_weights)
+            for step, (x_batch_test, y_batch_test) in enumerate(test_data):
+                y_pred = model(x_batch_test, training=False)
+                acc1 = compute_accuracy_lsh(y_batch_test, y_pred, np.arange(num_l), topk=1)
+                acc5 = compute_accuracy_lsh(y_batch_test, y_pred, np.arange(num_l), topk=5)
+                bs = x_batch_test.get_shape()[0]
+                test_top1.update(acc1, bs)
+                test_top5.update(acc5, bs)
+            print("Test Accuracy Top 1: %.4f" % (float(test_top1.avg),))
+            print("Test Accuracy Top 5: %.4f" % (float(test_top5.avg),))
+
     # Run a test loop at the end of training
     test_top1 = AverageMeter()
     test_top5 = AverageMeter()
@@ -154,7 +177,6 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         bs = x_batch_test.get_shape()[0]
         test_top1.update(acc1, bs)
         test_top5.update(acc5, bs)
-        print(acc5)
     print("Test Accuracy Top 1: %.4f" % (float(test_top1.avg),))
     print("Test Accuracy Top 5: %.4f" % (float(test_top5.avg),))
 
