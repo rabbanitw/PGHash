@@ -39,7 +39,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     start_idx_w = ((num_f * hls) + hls + (4 * hls))
     start_idx_b = full_model.size - num_l
     used_idx = np.zeros(num_l)
-    cur_idx = None
+    cur_idx = np.arange(num_l)
 
     for epoch in range(epochs):
 

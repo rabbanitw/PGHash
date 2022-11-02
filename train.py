@@ -39,7 +39,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     start_idx_b = full_model.size - num_l
     start_idx_w = ((num_f * hls) + hls + (4 * hls))
     used_idx = np.zeros(num_l)
-    cur_idx = None
+    cur_idx = np.arange(num_l)
 
     for epoch in range(epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -98,7 +98,9 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
                     # loss_value = sparse_bce_lsh(y_batch_train, y_pred, cur_idx)
                 else:
-                    loss_value = sparse_bce(y_batch_train, y_pred)
+                    y_true = tf.gather(tf.sparse.to_dense(y_batch_train), cur_idx, axis=1)
+                    loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+                    # loss_value = sparse_bce(y_batch_train, y_pred)
 
                 # compute accuracy for the minibatch (top 1 and 5) & store accuracy and loss values
                 rec_init = time.time()
@@ -147,14 +149,14 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         if rank == 0:
             test_top1 = AverageMeter()
             test_top5 = AverageMeter()
-            worker_layer_dims = [num_f, hls, num_l]
-            model = SparseNeuralNetwork(worker_layer_dims)
-            layer_shapes, layer_sizes = get_model_architecture(model)
+            # worker_layer_dims = [num_f, hls, num_l]
+            # model = SparseNeuralNetwork(worker_layer_dims)
+            # layer_shapes, layer_sizes = get_model_architecture(model)
             # set new sub-model
-            w, b = get_sub_model(full_model, np.arange(num_l), start_idx_b, num_f, hls)
-            sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
-            new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
-            model.set_weights(new_weights)
+            # w, b = get_sub_model(full_model, np.arange(num_l), start_idx_b, num_f, hls)
+            # sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
+            # new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
+            # model.set_weights(new_weights)
             for step, (x_batch_test, y_batch_test) in enumerate(test_data):
                 y_pred = model(x_batch_test, training=False)
                 acc1 = compute_accuracy_lsh(y_batch_test, y_pred, np.arange(num_l), topk=1)
