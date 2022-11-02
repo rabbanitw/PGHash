@@ -6,9 +6,6 @@ from datetime import datetime
 
 def compute_accuracy(y_true, y_pred, topk=1):
     result = tf.math.top_k(y_pred, k=topk)
-
-
-
     batches, c = y_pred.get_shape()
     true_idx = y_true.indices.numpy()
     count = 0

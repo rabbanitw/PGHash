@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
-from dataloader_cluster import load_amazon670
+import argparse
+from dataloader import load_extreme_data
 from train_cluster import train
 from network import Graph
 from communicators import DecentralizedSGD, CentralizedSGD, LSHCentralizedSGD
@@ -13,15 +14,42 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 if __name__ == '__main__':
 
+    parser = argparse.ArgumentParser()
+    # Add an argument
+    parser.add_argument('--dataset', type=str, default='Amazon670k')
+    parser.add_argument('--graph_type', type=str, default='ring')
+    parser.add_argument('--randomSeed', type=int, default=1203)
+    parser.add_argument('--lsh', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--sdim', type=int, default=8)
+    parser.add_argument('--num_tables', type=int, default=50)
+    parser.add_argument('--cr', type=int, default=0.1)
+    parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--epochs', type=int, default=5)
+    parser.add_argument('--hidden_layer_size', type=int, default=128)
+
+    # Parse the argument
+    args = parser.parse_args()
+
     # mpi info
     rank = MPI.COMM_WORLD.Get_rank()
     size = MPI.COMM_WORLD.Get_size()
 
-    randomSeed = 105
-
     # set random seed
+    randomSeed = args.randomSeed
     tf.random.set_seed(randomSeed + rank)
     np.random.seed(randomSeed)
+
+    # hashing parameters
+    sdim = args.sdim
+    num_tables = args.num_tables
+    cr = args.cr
+    lsh = args.lsh
+
+    # load base network topology
+    graph_type = args.graph_type
+    weight_type = None
+    num_clusters = None
+    # G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
     # Assign GPUs and store CPU name
     cpu = tf.config.list_logical_devices('CPU')[0].name
@@ -33,29 +61,30 @@ if __name__ == '__main__':
     gpu_id = rank % num_gpus
     gpu = gpu_names[gpu_id]
 
-    # hashing parameters
-    sdim = 8
-    num_tables = 50
-    cr = 0.02
-    lsh = True
+    # training parameters
+    batch_size = args.batch_size
+    epochs = args.epochs
+    hls = args.hidden_layer_size
+    train_data_path = 'Data/' + args.dataset + '/train.txt'
+    test_data_path = 'Data/' + args.dataset + '/test.txt'
 
-    # load base network topology
-    graph_type = 'ring'
-    weight_type = None
-    num_clusters = None
-    # G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
+    print('Loading and partitioning data...')
+    with tf.device(cpu):
+        train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size,
+                                                                        train_data_path, test_data_path)
 
+    print('Initializing model...')
     # initialize full final dense layer (Glorot Uniform)
-    sd = np.sqrt(6.0 / (128 + 670091))
-    initial_final_dense = np.random.uniform(-sd, sd, (128, 670091)).astype(np.float32)
+    sd = np.sqrt(6.0 / (hls + n_labels))
+    initial_final_dense = np.random.uniform(-sd, sd, (hls, n_labels)).astype(np.float32)
     final_dense_shape = initial_final_dense.T.shape
-    num_c_layers = int(cr * 670091)
+    num_c_layers = int(cr * n_labels)
 
     if lsh:
-        worker_layer_dims = [135909, 128, num_c_layers]
+        worker_layer_dims = [n_features, hls, num_c_layers]
 
     else:
-        worker_layer_dims = [135909, 128, 670091]
+        worker_layer_dims = [n_features, hls, n_labels]
 
     # Load compressed model onto designated GPU
     with tf.device(gpu):
@@ -67,18 +96,16 @@ if __name__ == '__main__':
         layer_shapes, layer_sizes = get_model_architecture(model)
 
         optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
-        batch_size = 128
-        epochs = 30
 
     # load full model onto CPU and NOT the GPU (due to memory issues)
     with tf.device(cpu):
         if lsh:
             partial_model = flatten_weights(model.get_weights())
             partial_size = partial_model.size
-            half_model_size = (135909 * 128) + 128 + (4 * 128)
-            missing_bias = 670091-num_c_layers
-            missing_weights = 128*(670091-num_c_layers)
-            full_dense_weights = 128*670091
+            half_model_size = (n_features * hls) + hls + (4 * hls)
+            missing_bias = n_labels-num_c_layers
+            missing_weights = hls*(n_labels-num_c_layers)
+            full_dense_weights = hls*n_labels
             full_model = np.zeros(partial_size + missing_weights + missing_bias)
             full_model[:half_model_size] = partial_model[:half_model_size]
             full_model[half_model_size:(half_model_size+full_dense_weights)] = initial_final_dense.T.flatten()
@@ -88,9 +115,6 @@ if __name__ == '__main__':
             # initialize D-SGD or Centralized SGD
             # communicator = DecentralizedSGD(rank, sieze, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
             communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
-
-        print('Loading and partitioning data...')
-        train_data, test_data = load_amazon670(rank, size, batch_size)
 
     print('Beginning training...')
     full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs,

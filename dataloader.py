@@ -1,7 +1,6 @@
 import numpy as np
 import tensorflow as tf
 from xclib.data import data_utils
-import os
 
 
 def convert_sparse_matrix_to_sparse_tensor(X):
@@ -10,11 +9,10 @@ def convert_sparse_matrix_to_sparse_tensor(X):
     return tf.sparse.reorder(tf.SparseTensor(indices, coo.data, coo.shape))
 
 
-def load_amazon670(rank, size, batch_size):
-
+def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
     # load data
-    features, labels, num_samples, num_features, num_labels = data_utils.read_data('Data/Amazon670k/train.txt')
-    features_t, labels_t, num_labels_t, num_features_t, num_labels_t = data_utils.read_data('Data/Amazon670k/test.txt')
+    features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
+    features_t, labels_t, num_labels_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
 
     # partition data amongst workers
     worker_features = partition_sparse_dataset(features, rank, size)
@@ -31,7 +29,7 @@ def load_amazon670(rank, size, batch_size):
     # Create train and test datasets
     trn_dataset = tf.data.Dataset.from_tensor_slices((trn, trn_labels)).batch(batch_size)
     tst_dataset = tf.data.Dataset.from_tensor_slices((tst, tst_labels)).batch(batch_size)
-    return trn_dataset, tst_dataset
+    return trn_dataset, tst_dataset, num_features, num_labels
 
 
 def partition_sparse_dataset(data_array, rank, size, partition_type='Simple'):
