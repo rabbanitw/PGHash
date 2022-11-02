@@ -28,28 +28,36 @@ def get_model_architecture(model):
     return layer_shapes, layer_sizes
 
 
-def update_full_model(full_model, weights, biases, idx, start_idx_b, start_idx_w=((135909 * 128) + 128 + (4 * 128))):
+def update_full_model(full_model, weights, biases, idx, start_idx_b, num_features, hidden_layer_size):
+    start_idx_w = ((num_features * hidden_layer_size) + hidden_layer_size + (4 * hidden_layer_size))
     bias_idx = idx + start_idx_b
-    full_idx = [range((start_idx_w + i*128), (start_idx_w + i*128 + 128)) for i in idx]
+    full_idx = [range((start_idx_w + i*hidden_layer_size), (start_idx_w + i*hidden_layer_size + hidden_layer_size))
+                for i in idx]
     full_model[full_idx] = weights.T
     full_model[bias_idx] = biases
     return full_model
 
 
-def get_sub_model(full_model, idx, start_idx_b, start_idx_w=((135909 * 128) + 128 + (4 * 128))):
+def get_sub_model(full_model, idx, start_idx_b, num_features, hidden_layer_size):
+    start_idx_w = ((num_features * hidden_layer_size) + hidden_layer_size + (4 * hidden_layer_size))
     # get biases
     bias_idx = idx + start_idx_b
     biases = full_model[bias_idx]
     # get weights
-    full_idx = [range((start_idx_w + i*128), (start_idx_w + i*128 + 128)) for i in idx]
+    full_idx = [range((start_idx_w + i*hidden_layer_size), (start_idx_w + i*hidden_layer_size + hidden_layer_size))
+                for i in idx]
     weights = full_model[full_idx].T
     return weights, biases
 
 
-def get_full_dense(full_model, dense_shape=(670091, 128), start_idx=((135909 * 128) + 128 + (4 * 128)),
-                   end_idx=((135909 * 128) + 128 + (4 * 128) + 128*670091)):
+def get_full_dense(full_model, num_features, num_labels, hidden_layer_size):
+    dense_shape = (num_labels, hidden_layer_size)
+    start_idx = ((num_features * hidden_layer_size) + hidden_layer_size + (4 * hidden_layer_size))
+    end_idx = ((num_features * hidden_layer_size) + hidden_layer_size + (4 * hidden_layer_size) +
+               hidden_layer_size*num_labels)
     return full_model[start_idx:end_idx].reshape(dense_shape).T
 
 
-def get_partial_model(full_model, layer_shapes, layer_sizes, end_idx=((135909 * 128) + 128 + (4 * 128))):
+def get_partial_model(full_model, layer_shapes, layer_sizes, num_features, hidden_layer_size):
+    end_idx = ((num_features * hidden_layer_size) + hidden_layer_size + (4 * hidden_layer_size))
     return unflatten_weights(full_model[:end_idx], layer_shapes, layer_sizes)

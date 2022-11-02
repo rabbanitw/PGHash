@@ -176,8 +176,7 @@ class LSHCentralizedSGD:
     """
         centralized averaging, allowing periodic averaging
         """
-    def __init__(self, rank, size, comm, influence, layer_shapes, layer_sizes, i1, i2,
-                 start_idx_w=((135909 * 128) + 128 + (4 * 128))):
+    def __init__(self, rank, size, comm, influence, layer_shapes, layer_sizes, i1, i2, num_f, num_l, hls):
         self.comm = comm
         self.rank = rank
         self.size = size
@@ -188,7 +187,10 @@ class LSHCentralizedSGD:
         self.i2 = i2
         self.iter = 0
         self.comm_iter = 0
-        self.start_idx_w = start_idx_w
+        self.start_idx_w = ((num_f * hls) + hls + (4 * hls))
+        self.num_features = num_f
+        self.num_labels = num_l
+        self.hls = hls
 
     def average(self, model, full_model, cur_idx, start_idx_b):
 
@@ -199,7 +201,7 @@ class LSHCentralizedSGD:
 
         # update the first part of the model as well!
 
-        full_model = update_full_model(full_model, w, b, cur_idx, start_idx_b)
+        full_model = update_full_model(full_model, w, b, cur_idx, start_idx_b, self.num_features, self.hls)
 
         # create receiving buffer
         recv_buffer = np.empty_like(full_model)
@@ -210,7 +212,7 @@ class LSHCentralizedSGD:
         toc = time.time()
 
         # set new sub-model
-        w, b = get_sub_model(recv_buffer, cur_idx, start_idx_b)
+        w, b = get_sub_model(recv_buffer, cur_idx, start_idx_b, self.num_features, self.hls)
         sub_model = np.concatenate((recv_buffer[:self.start_idx_w], w.flatten(), b.flatten()))
         new_weights = unflatten_weights(sub_model, self.layer_shapes, self.layer_sizes)
         model.set_weights(new_weights)

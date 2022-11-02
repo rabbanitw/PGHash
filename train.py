@@ -29,16 +29,16 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, sdim, num_tables,
-          cr, steps_per_lsh=20, lsh=True, hash_type="slide_vanilla"):
+          num_f, num_l, hls, cr, steps_per_lsh=20, lsh=True, hash_type="slide_vanilla"):
 
     top1 = AverageMeter()
     top5 = AverageMeter()
     losses = AverageMeter()
     recorder = Recorder('Output', rank, hash_type)
     total_batches = 0
-    start_idx_b = full_model.size - 670091
-    start_idx_w = ((135909 * 128) + 128 + (4 * 128))
-    used_idx = np.zeros(670091)
+    start_idx_b = full_model.size - num_l
+    start_idx_w = ((num_f * hls) + hls + (4 * hls))
+    used_idx = np.zeros(num_l)
     cur_idx = None
 
     for epoch in range(epochs):
@@ -63,16 +63,16 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 if step % steps_per_lsh == 0:
 
                     # compute LSH
-                    final_dense = get_full_dense(full_model)
+                    final_dense = get_full_dense(full_model, num_f, num_l, hls)
                     cur_idx = run_lsh(model, x_batch_train, final_dense, sdim, int(num_tables), cr, hash_type)
                     used_idx[cur_idx] += 1
 
-                    worker_layer_dims = [135909, 128, len(cur_idx)]
+                    worker_layer_dims = [num_f, hls, len(cur_idx)]
                     model = SparseNeuralNetwork(worker_layer_dims)
                     layer_shapes, layer_sizes = get_model_architecture(model)
 
                     # set new sub-model
-                    w, b = get_sub_model(full_model, cur_idx, start_idx_b)
+                    w, b = get_sub_model(full_model, cur_idx, start_idx_b, num_f, hls)
                     sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
                     new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
                     model.set_weights(new_weights)

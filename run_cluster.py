@@ -110,15 +110,17 @@ if __name__ == '__main__':
             full_model[:half_model_size] = partial_model[:half_model_size]
             full_model[half_model_size:(half_model_size+full_dense_weights)] = initial_final_dense.T.flatten()
             # initialize Centralized LSH Communicator
-            communicator = LSHCentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
+            communicator = LSHCentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1,
+                                             n_features, n_labels, hls)
         else:
             # initialize D-SGD or Centralized SGD
             # communicator = DecentralizedSGD(rank, sieze, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
             communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
 
     print('Beginning training...')
-    full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs,
-                                     gpu, cpu, sdim, num_tables, cr)
+    full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data,
+                                                 full_model, epochs, gpu, cpu, sdim, num_tables,
+                                                 n_features, n_labels, hls, cr)
 
     recv_indices = None
     if rank == 0:
