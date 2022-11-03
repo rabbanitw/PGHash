@@ -117,8 +117,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     comm_time = communicator.communicate(model)
                     full_model = flatten_weights(model.get_weights())
 
-                recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, np.Nan, loss_value.numpy(),
-                                 top1.avg, np.Nan, losses.avg)
+                recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, np.NaN, loss_value.numpy(),
+                                 top1.avg, np.NaN, losses.avg)
                 total_batches += batch
                 # Log every 10 batches.
                 if step % 10 == 0:
