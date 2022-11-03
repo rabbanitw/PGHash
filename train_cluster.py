@@ -50,9 +50,9 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
         return acc1
 
-    def lr_schedule(step, lr, weight=0.05):
-        if step > 75:
-            lr = lr/(1 + weight*(step-75))
+    def lr_schedule(step, lr, weight=0.05, start_epoch=75):
+        if step >= start_epoch:
+            lr = lr/(1 + weight*(step-start_epoch))
             optimizer.lr.assign(lr)
         return lr
 
