@@ -6,7 +6,8 @@ from datetime import datetime
 
 def compute_accuracy(y_true, y_pred, lsh_idx, topk=1):
     batches, c = y_pred.get_shape()
-    translated_pred = lsh_idx[tf.math.top_k(y_pred, k=topk).indices.numpy()]
+    # translated_pred = lsh_idx[tf.math.top_k(y_pred, k=topk).indices.numpy()]
+    translated_pred = lsh_idx[np.array(tf.math.top_k(y_pred, k=topk).indices)]
     pred_top_idx = np.hstack((np.arange(batches)[:, np.newaxis], translated_pred))
     true_idx = y_true.indices.numpy()
     d = np.maximum(pred_top_idx.max(0), true_idx.max(0)) + 1

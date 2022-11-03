@@ -28,7 +28,7 @@ def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
 
     # Create train and test datasets
     trn_dataset = tf.data.Dataset.from_tensor_slices((trn, trn_labels)).batch(batch_size)
-    tst_dataset = tf.data.Dataset.from_tensor_slices((tst, tst_labels)).batch(batch_size)
+    tst_dataset = tf.data.Dataset.from_tensor_slices((tst, tst_labels)).batch(128)
     return trn_dataset, tst_dataset, num_features, num_labels
 
 

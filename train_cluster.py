@@ -6,6 +6,7 @@ from unpack import get_sub_model, get_full_dense, unflatten_weights, flatten_wei
 from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 from mlp import SparseNeuralNetwork
 import time
+import gc
 
 
 def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
@@ -29,10 +30,27 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu, sdim, num_tables,
-          num_f, num_l, hls, cr, lsh, hash_type, steps_per_lsh):
+          num_f, num_l, hls, cr, lsh, hash_type, steps_per_lsh,
+          acc_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=1)):
+
+    @tf.function
+    def train_step(x, y):
+        with tf.GradientTape() as tape:
+            y_pred = model(x, training=True)
+            y_true = tf.gather(tf.sparse.to_dense(y), cur_idx, axis=1)
+            loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+        grads = tape.gradient(loss_value, model.trainable_weights)
+        optimizer.apply_gradients(zip(grads, model.trainable_weights))
+        return loss_value, y_pred
+
+    @tf.function
+    def test_step(x, y):
+        y_pred = model(x, training=False)
+        acc_metric.update_state(y_pred, y)
+        del (y_pred)
+        gc.collect()
 
     top1 = AverageMeter()
-    top5 = AverageMeter()
     losses = AverageMeter()
     recorder = Recorder('Output', rank, hash_type)
     total_batches = 0
@@ -79,42 +97,15 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 else:
                     lsh_time = 0
 
-                y_no_sparse = tf.sparse.to_dense(y_batch_train)
-                with tf.device(gpu):
-                    with tf.GradientTape() as tape:
+                # compute training step
+                loss_value, y_pred = train_step(x_batch_train, y_batch_train)
 
-                        # Run the forward pass of the layer.
-                        # The operations that the layer applies
-                        # to its inputs are going to be recorded
-                        # on the GradientTape.
-
-                        y_pred = model(x_batch_train, training=True)
-
-                        # Compute the loss value for this minibatch.
-                        if lsh:
-                            y_true = tf.gather(y_no_sparse, cur_idx, axis=1)
-                            loss_value = tf.reduce_mean(
-                                tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-                            # loss_value = sparse_bce_lsh(y_batch_train, y_pred, cur_idx)
-                        else:
-                            loss_value = sparse_bce(y_batch_train, y_pred)
-
-                        # compute accuracy for the minibatch (top 1 and 5) & store accuracy and loss values
-                        rec_init = time.time()
-                        acc1 = compute_accuracy_lsh(y_batch_train, y_pred, cur_idx, topk=1)
-                        acc5 = compute_accuracy_lsh(y_batch_train, y_pred, cur_idx, topk=5)
-                        losses.update(loss_value.numpy(), batch)
-                        top1.update(acc1, batch)
-                        top5.update(acc5, batch)
-                        record_time = time.time() - rec_init
-
-                    # Use the gradient tape to automatically retrieve
-                    # the gradients of the trainable variables with respect to the loss.
-                    grads = tape.gradient(loss_value, model.trainable_weights)
-
-                    # Run one step of gradient descent by updating
-                    # the value of the variables to minimize the loss.
-                    optimizer.apply_gradients(zip(grads, model.trainable_weights))
+                # compute accuracy for the minibatch (top 1 and 5) & store accuracy and loss values
+                rec_init = time.time()
+                acc1 = compute_accuracy_lsh(y_batch_train, y_pred, cur_idx, topk=1)
+                losses.update(loss_value.numpy(), batch)
+                top1.update(acc1, batch)
+                record_time = time.time() - rec_init
 
                 comp_time = (time.time() - init_time) - (lsh_time + record_time)
 
@@ -126,28 +117,31 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     comm_time = communicator.communicate(model)
                     full_model = flatten_weights(model.get_weights())
 
-                recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, acc5, loss_value.numpy(),
-                                 top1.avg, top5.avg, losses.avg)
+                recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, np.Nan, loss_value.numpy(),
+                                 top1.avg, np.Nan, losses.avg)
                 total_batches += batch
-                # Log every 200 batches.
+                # Log every 10 batches.
                 if step % 5 == 0:
                     print(
-                        "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Accuracy %.4f, "
-                        "Top 5 Accuracy %.4f [%d Total Samples]" % (
-                        rank, step, (comp_time + comm_time), loss_value.numpy(),
-                        acc1, acc5, total_batches)
+                        "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Accuracy %.4f, [%d Total Samples]" % (
+                        rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
                     )
+
+                if step % 5 == 0:
+                    if rank == 0:
+                        with tf.device(cpu):
+                            for step, (x_batch_test, y_batch_test) in enumerate(test_data):
+                                test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
+                            print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
+                            acc_metric.reset_state()
 
         # reset accuracy statistics for next epoch
         top1.reset()
-        top5.reset()
         losses.reset()
         # Save data to output folder
         recorder.save_to_file()
 
         if rank == 0:
-            test_top1 = AverageMeter()
-            test_top5 = AverageMeter()
             with tf.device(cpu):
                 worker_layer_dims = [num_f, hls, num_l]
                 model = SparseNeuralNetwork(worker_layer_dims)
@@ -158,30 +152,14 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
                 model.set_weights(new_weights)
                 for step, (x_batch_test, y_batch_test) in enumerate(test_data):
-                    y_pred = model(x_batch_test, training=False)
-                    acc1 = compute_accuracy_lsh(y_batch_test, y_pred, np.arange(num_l), topk=1)
-                    acc5 = compute_accuracy_lsh(y_batch_test, y_pred, np.arange(num_l), topk=5)
-                    bs = x_batch_test.get_shape()[0]
-                    test_top1.update(acc1, bs)
-                    test_top5.update(acc5, bs)
-                print("Test Accuracy Top 1: %.4f" % (float(test_top1.avg),))
-                print("Test Accuracy Top 5: %.4f" % (float(test_top5.avg),))
+                    test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
+                print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
 
     # Run a test loop at the end of training
-    test_top1 = AverageMeter()
-    test_top5 = AverageMeter()
     print('Testing Model...')
     with tf.device(cpu):
         for step, (x_batch_test, y_batch_test) in enumerate(test_data):
-            with tf.device(gpu):
-                y_pred = model(x_batch_test, training=False)
-            # Update test metrics
-            acc1 = compute_accuracy_lsh(y_batch_test, y_pred, cur_idx, topk=1)
-            acc5 = compute_accuracy_lsh(y_batch_test, y_pred, cur_idx, topk=5)
-            bs = x_batch_test.get_shape()[0]
-            test_top1.update(acc1, bs)
-            test_top5.update(acc5, bs)
-        print("Test Accuracy Top 1: %.4f" % (float(test_top1.avg),))
-        print("Test Accuracy Top 5: %.4f" % (float(test_top5.avg),))
+            test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
+        print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
 
     return full_model, used_idx, recorder.get_saveFolder()
