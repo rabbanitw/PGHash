@@ -45,10 +45,11 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         return loss_value, y_pred
 
     # @tf.function
-    def test_step(x, y, model, cur_idx):
-        y_pred = model(x, training=False)
-        acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
-        return acc1
+    with tf.device(cpu):
+        def test_step(x, y, model, cur_idx):
+            y_pred = model(x, training=False)
+            acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
+            return acc1
 
     def lr_schedule(step, lr, weight=0.05, start_epoch=75):
         if step >= start_epoch:
@@ -148,14 +149,14 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                             model2.set_weights(unflatten_weights(full_model, layer_shapes, layer_sizes))
                             for step, (x_batch_test, y_batch_test) in enumerate(test_data):
                                 #test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
-                                acc = test_step(x_batch_test, y_batch_test, model2, cur_idx)
+                                acc = test_step(x_batch_test, y_batch_test, model2, np.arange(num_l))
                                 top1_test.update(acc, x_batch_test.get_shape()[0])
                             test_acc = top1_test.avg
                             # put back original model after computing accuracy
                             tf.keras.backend.clear_session()
                             worker_layer_dims = [num_f, hls, len(cur_idx)]
-                            with tf.device(gpu):
-                                model = SparseNeuralNetwork(worker_layer_dims)
+                            #with tf.device(gpu):
+                            model = SparseNeuralNetwork(worker_layer_dims)
                             layer_shapes, layer_sizes = get_model_architecture(model)
                             # set new sub-model
                             w, b = get_sub_model(full_model, cur_idx, start_idx_b, num_f, hls)
