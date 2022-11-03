@@ -58,6 +58,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     start_idx_b = full_model.size - num_l
     used_idx = np.zeros(num_l)
     cur_idx = np.arange(num_l)
+    test_acc = np.NaN
 
     for epoch in range(epochs):
 
@@ -134,14 +135,15 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                                 #test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
                                 acc = test_step(x_batch_test, y_batch_test, cur_idx)
                                 top1_test.update(acc, x_batch_test.get_shape[0])
-                            print("Test Accuracy Top 1: %.4f In %f seconds" % (top1_test.avg, time.time()-t))
+                            test_acc = top1_test.avg
+                            print("Test Accuracy Top 1: %.4f In %f seconds" % (test_acc, time.time()-t))
                             # print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
                             # acc_metric.reset_state()
 
                 MPI.COMM_WORLD.Barrier()
-                recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, np.NaN,
-                                 loss_value.numpy(),
-                                 top1.avg, np.NaN, losses.avg)
+                recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc,
+                                 loss_value.numpy(), top1.avg, losses.avg)
+                test_acc = np.NaN
 
 
         # reset accuracy statistics for next epoch

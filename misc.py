@@ -58,10 +58,9 @@ class Recorder(object):
         self.record_lsh_times = list()
         self.record_losses = list()
         self.record_training_acc1 = list()
-        self.record_training_acc5 = list()
+        self.record_test_acc1 = list()
         self.record_avg_losses = list()
         self.record_avg_training_acc1 = list()
-        self.record_avg_training_acc5 = list()
         self.rank = rank
         now = datetime.now()
         self.start_time = now.strftime("%m/%d/%Y/%H:%M")
@@ -73,17 +72,16 @@ class Recorder(object):
     def get_saveFolder(self):
         return self.saveFolderName
 
-    def add_new(self, epoch_time, comp_time, comm_time, lsh_time, acc1, acc5, losses,
-                avg_acc1, avg_acc5, avg_losses):
+    def add_new(self, epoch_time, comp_time, comm_time, lsh_time, train_acc1, test_acc1, losses,
+                avg_acc1, avg_losses):
         self.record_epoch_times.append(epoch_time)
         self.record_comp_times.append(comp_time)
         self.record_comm_times.append(comm_time)
         self.record_lsh_times.append(lsh_time)
-        self.record_training_acc1.append(acc1)
-        self.record_training_acc5.append(acc5)
+        self.record_training_acc1.append(train_acc1)
+        self.record_test_acc1.append(test_acc1)
         self.record_losses.append(losses)
         self.record_avg_training_acc1.append(avg_acc1)
-        self.record_avg_training_acc5.append(avg_acc5)
         self.record_avg_losses.append(avg_losses)
 
     def save_to_file(self):
@@ -102,10 +100,8 @@ class Recorder(object):
                    delimiter=',')
         np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-avg-epoch-train-acc-top1.log',
                    self.record_avg_training_acc1, delimiter=',')
-        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-train-acc-top5.log', self.record_training_acc5,
+        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-test-acc-to25.log', self.record_test_acc1,
                    delimiter=',')
-        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-avg-epoch-train-acc-top5.log',
-                   self.record_avg_training_acc5, delimiter=',')
 
         # with open(self.saveFolderName + '/ExpDescription', 'w') as f:
         #    f.write(str(self.args) + '\n')

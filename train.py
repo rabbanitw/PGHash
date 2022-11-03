@@ -64,6 +64,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     start_idx_w = ((num_f * hls) + hls + (4 * hls))
     used_idx = np.zeros(num_l)
     cur_idx = np.arange(num_l)
+    test_acc = np.NaN
 
     for epoch in range(epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -125,8 +126,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             else:
                 comm_time = communicator.communicate(model)
 
-            recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, np.NaN, loss_value.numpy(),
-                             top1.avg, np.NaN, losses.avg)
+            recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, test_acc, loss_value.numpy(),
+                             top1.avg, losses.avg)
 
             total_batches += batch
             # Log every 200 batches.
