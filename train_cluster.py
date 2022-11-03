@@ -45,11 +45,12 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         return loss_value, y_pred
 
     # @tf.function
-    with tf.device(cpu):
-        def test_step(x, y, model, cur_idx):
+
+    def test_step(x, y, model, cur_idx, cpu):
+        with tf.device(cpu):
             y_pred = model(x, training=False)
             acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
-            return acc1
+        return acc1
 
     def lr_schedule(step, lr, weight=0.05, start_epoch=75):
         if step >= start_epoch:
@@ -144,12 +145,12 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                         # with tf.device(gpu):
                             t = time.time()
                             worker_layer_dims = [num_f, hls, num_l]
-                            model2 = SparseNeuralNetwork(worker_layer_dims)
-                            layer_shapes, layer_sizes = get_model_architecture(model2)
-                            model2.set_weights(unflatten_weights(full_model, layer_shapes, layer_sizes))
+                            model = SparseNeuralNetwork(worker_layer_dims)
+                            layer_shapes, layer_sizes = get_model_architecture(model)
+                            model.set_weights(unflatten_weights(full_model, layer_shapes, layer_sizes))
                             for step, (x_batch_test, y_batch_test) in enumerate(test_data):
                                 #test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
-                                acc = test_step(x_batch_test, y_batch_test, model2, np.arange(num_l))
+                                acc = test_step(x_batch_test, y_batch_test, model, np.arange(num_l), cpu)
                                 top1_test.update(acc, x_batch_test.get_shape()[0])
                             test_acc = top1_test.avg
                             # put back original model after computing accuracy
