@@ -134,7 +134,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                             for step, (x_batch_test, y_batch_test) in enumerate(test_data):
                                 #test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
                                 acc = test_step(x_batch_test, y_batch_test, cur_idx)
-                                top1_test.update(acc, x_batch_test.get_shape[0])
+                                top1_test.update(acc, x_batch_test.get_shape()[0])
                             test_acc = top1_test.avg
                             print("Test Accuracy Top 1: %.4f In %f seconds" % (test_acc, time.time()-t))
                             # print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
