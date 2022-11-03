@@ -8,6 +8,7 @@ from communicators import CentralizedSGD, LSHCentralizedSGD
 from mlp import SparseNeuralNetwork
 from unpack import get_model_architecture, flatten_weights
 from mpi4py import MPI
+# tf.config.run_functions_eagerly(True)
 
 
 if __name__ == '__main__':

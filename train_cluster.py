@@ -121,12 +121,12 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                                  top1.avg, np.Nan, losses.avg)
                 total_batches += batch
                 # Log every 10 batches.
-                if step % 5 == 0:
+                if step % 10 == 0:
                     print(
                         "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Accuracy %.4f, [%d Total Samples]" % (
                         rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
                     )
-
+                '''
                 if step % 5 == 0:
                     if rank == 0:
                         with tf.device(cpu):
@@ -134,6 +134,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                                 test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
                             print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
                             acc_metric.reset_state()
+                '''
 
         # reset accuracy statistics for next epoch
         top1.reset()
@@ -141,6 +142,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         # Save data to output folder
         recorder.save_to_file()
 
+        '''
         if rank == 0:
             with tf.device(cpu):
                 worker_layer_dims = [num_f, hls, num_l]
@@ -154,6 +156,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 for step, (x_batch_test, y_batch_test) in enumerate(test_data):
                     test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
                 print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
+        '''
 
     # Run a test loop at the end of training
     print('Testing Model...')

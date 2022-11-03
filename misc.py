@@ -5,6 +5,9 @@ from datetime import datetime
 
 
 def compute_accuracy(y_true, y_pred, lsh_idx, topk=1):
+    # if numpy:
+    #    batches, c = y_pred.shape
+    #    translated_pred = lsh_idx[np.array(find_topk(y_pred, k=topk))]
     batches, c = y_pred.get_shape()
     # translated_pred = lsh_idx[tf.math.top_k(y_pred, k=topk).indices.numpy()]
     translated_pred = lsh_idx[np.array(tf.math.top_k(y_pred, k=topk).indices)]
