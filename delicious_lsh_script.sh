@@ -2,7 +2,7 @@
 
 # Lines that begin with #SBATCH specify commands to be used by SLURM for scheduling
 
-#SBATCH --job-name=pg_vanilla2     # sets the job name if not set from environment
+#SBATCH --job-name=s_avg_sdim9     # sets the job name if not set from environment
 #SBATCH --time=10:45:00     # how long you think your job will take to complete; format=hh:mm:ss
 #SBATCH --account=scavenger    # set QOS, this will determine what resources can be requested
 #SBATCH --qos=scavenger    # set QOS, this will determine what resources can be requested
@@ -17,4 +17,4 @@ module load mpi
 module load cuda/11.4.4
 module load cudnn/v8.2.1
 
-mpirun -np 1 python run_cluster.py --dataset Delicious200K --cr 0.1 --epochs 10 --batch_size 32 --hash_type slide_avg --sdim 9
+mpirun -np 1 python run_cluster.py --dataset Delicious200K --cr 0.1 --epochs 5 --batch_size 32 --hash_type slide_avg --sdim 9

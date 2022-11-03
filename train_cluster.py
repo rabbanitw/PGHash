@@ -139,8 +139,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 if step % 100 == 0: # or step == 50:
                     if rank == 0:
                         top1_test = AverageMeter()
-                        # with tf.device(cpu):
-                        with tf.device(gpu):
+                        with tf.device(cpu):
+                        # with tf.device(gpu):
                             t = time.time()
                             for step, (x_batch_test, y_batch_test) in enumerate(test_data):
                                 #test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
