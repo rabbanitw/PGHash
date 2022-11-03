@@ -5,6 +5,7 @@ from misc import compute_accuracy, compute_accuracy_lsh, AverageMeter, Recorder
 from unpack import get_sub_model, get_full_dense, unflatten_weights, flatten_weights, get_model_architecture
 from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 from mlp import SparseNeuralNetwork
+from mpi4py import MPI
 import time
 import gc
 
@@ -44,11 +45,10 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         return loss_value, y_pred
 
     @tf.function
-    def test_step(x, y):
+    def test_step(x, y, cur_idx):
         y_pred = model(x, training=False)
-        acc_metric.update_state(y_pred, y)
-        del (y_pred)
-        gc.collect()
+        acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
+        return acc1
 
     top1 = AverageMeter()
     losses = AverageMeter()
@@ -117,8 +117,6 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     comm_time = communicator.communicate(model)
                     full_model = flatten_weights(model.get_weights())
 
-                recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, np.NaN, loss_value.numpy(),
-                                 top1.avg, np.NaN, losses.avg)
                 total_batches += batch
                 # Log every 10 batches.
                 if step % 10 == 0:
@@ -126,15 +124,25 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                         "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Accuracy %.4f, [%d Total Samples]" % (
                         rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
                     )
-                '''
+
                 if step % 5 == 0:
                     if rank == 0:
+                        top1_test = AverageMeter()
                         with tf.device(cpu):
+                            t = time.time()
                             for step, (x_batch_test, y_batch_test) in enumerate(test_data):
-                                test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
-                            print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
-                            acc_metric.reset_state()
-                '''
+                                #test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
+                                acc = test_step(x_batch_test, y_batch_test, cur_idx)
+                                top1_test.update(acc, x_batch_test.get_shape[0])
+                            print("Test Accuracy Top 1: %.4f In %f seconds" % (top1_test.avg, time.time()-t))
+                            # print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
+                            # acc_metric.reset_state()
+
+                MPI.COMM_WORLD.Barrier()
+                recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, np.NaN,
+                                 loss_value.numpy(),
+                                 top1.avg, np.NaN, losses.avg)
+
 
         # reset accuracy statistics for next epoch
         top1.reset()
