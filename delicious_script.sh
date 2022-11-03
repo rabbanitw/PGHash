@@ -17,4 +17,4 @@ module load mpi
 module load cuda/11.4.4
 module load cudnn/v8.2.1
 
-mpirun --mca btl_openib_warn_no_device_params_found 0 --mca orte_base_help_aggregate 0 --mca btl ^openib ... -np 1 python run_cluster.py --dataset Delicious200K --cr 1 --no-lsh --epochs 10 --batch_size 256
+mpirun -np 1 python run_cluster.py --dataset Delicious200K --cr 1 --no-lsh --epochs 10 --batch_size 256
