@@ -126,10 +126,10 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                         rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
                     )
 
-                if step % 5 == 0:
+                if step % 10 == 0:
                     if rank == 0:
                         top1_test = AverageMeter()
-                        with tf.device(cpu):
+                        with tf.device(gpu):
                             t = time.time()
                             for step, (x_batch_test, y_batch_test) in enumerate(test_data):
                                 #test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
@@ -143,14 +143,14 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 MPI.COMM_WORLD.Barrier()
                 recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc,
                                  loss_value.numpy(), top1.avg, losses.avg)
+                # Save data to output folder
+                recorder.save_to_file()
                 test_acc = np.NaN
 
 
         # reset accuracy statistics for next epoch
         top1.reset()
         losses.reset()
-        # Save data to output folder
-        recorder.save_to_file()
 
         '''
         if rank == 0:
