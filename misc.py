@@ -100,7 +100,7 @@ class Recorder(object):
                    delimiter=',')
         np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-avg-epoch-train-acc-top1.log',
                    self.record_avg_training_acc1, delimiter=',')
-        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-test-acc-to25.log', self.record_test_acc1,
+        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-test-acc-top1.log', self.record_test_acc1,
                    delimiter=',')
 
         # with open(self.saveFolderName + '/ExpDescription', 'w') as f:

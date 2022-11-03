@@ -50,6 +50,12 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
         return acc1
 
+    def lr_schedule(step, lr, weight=0.05):
+        if step > 75:
+            lr = lr/(1 + weight*step)
+            optimizer.lr.assign(lr)
+        return lr
+
     top1 = AverageMeter()
     losses = AverageMeter()
     recorder = Recorder('Output', rank, hash_type)
@@ -59,6 +65,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     used_idx = np.zeros(num_l)
     cur_idx = np.arange(num_l)
     test_acc = np.NaN
+    lr = optimizer.learning_rate.numpy()
 
     for epoch in range(epochs):
 
@@ -127,9 +134,10 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     )
 
                 # check test accuracy every 100 iterations
-                if step % 100 == 0:
+                if step % 100 == 0 or step == 50:
                     if rank == 0:
                         top1_test = AverageMeter()
+                        # with tf.device(cpu):
                         with tf.device(gpu):
                             t = time.time()
                             for step, (x_batch_test, y_batch_test) in enumerate(test_data):
@@ -140,6 +148,9 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                             print("Test Accuracy Top 1: %.4f In %f seconds" % (test_acc, time.time()-t))
                             # print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
                             # acc_metric.reset_state()
+
+                # update learning rate
+                lr = lr_schedule(step, lr)
 
                 MPI.COMM_WORLD.Barrier()
                 recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc,
