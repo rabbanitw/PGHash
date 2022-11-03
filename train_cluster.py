@@ -52,7 +52,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
     def lr_schedule(step, lr, weight=0.05):
         if step > 75:
-            lr = lr/(1 + weight*step)
+            lr = lr/(1 + weight*(step-75))
             optimizer.lr.assign(lr)
         return lr
 
