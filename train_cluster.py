@@ -66,6 +66,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     cur_idx = np.arange(num_l)
     test_acc = np.NaN
     lr = optimizer.learning_rate.numpy()
+    total_steps = 0
 
     for epoch in range(epochs):
 
@@ -74,6 +75,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             # Iterate over the batches of the dataset.
             for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
+                total_steps += 1
                 init_time = time.time()
                 batch, s = x_batch_train.get_shape()
 
@@ -150,7 +152,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                             # acc_metric.reset_state()
 
                 # update learning rate
-                lr = lr_schedule(step, lr)
+                lr = lr_schedule(total_steps, lr)
 
                 MPI.COMM_WORLD.Barrier()
                 recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc,
