@@ -136,7 +136,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     )
 
                 # check test accuracy every 100 iterations
-                if step % 100 == 0 or step == 50:
+                if step % 100 == 0: # or step == 50:
                     if rank == 0:
                         top1_test = AverageMeter()
                         # with tf.device(cpu):
@@ -152,7 +152,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                             # acc_metric.reset_state()
 
                 # update learning rate
-                lr = lr_schedule(total_steps, lr)
+                # lr = lr_schedule(total_steps, lr)
 
                 MPI.COMM_WORLD.Barrier()
                 recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc,
