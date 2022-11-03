@@ -23,8 +23,9 @@ if __name__ == '__main__':
     parser.add_argument('--lsh', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--sdim', type=int, default=8)
     parser.add_argument('--num_tables', type=int, default=50)
+    parser.add_argument('--lr', type=int, default=1e-3)
     parser.add_argument('--cr', type=int, default=0.1)
-    parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
     parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
@@ -99,7 +100,7 @@ if __name__ == '__main__':
         # get model architecture
         layer_shapes, layer_sizes = get_model_architecture(model)
 
-        optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
 
     # load full model onto CPU and NOT the GPU (due to memory issues)
     with tf.device(cpu):

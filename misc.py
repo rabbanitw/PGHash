@@ -4,16 +4,14 @@ import os
 from datetime import datetime
 
 
-def compute_accuracy(y_true, y_pred, topk=1):
-    result = tf.math.top_k(y_pred, k=topk)
+def compute_accuracy(y_true, y_pred, lsh_idx, topk=1):
     batches, c = y_pred.get_shape()
+    translated_pred = lsh_idx[tf.math.top_k(y_pred, k=topk).indices.numpy()]
+    pred_top_idx = np.hstack((np.arange(batches)[:, np.newaxis], translated_pred))
     true_idx = y_true.indices.numpy()
-    count = 0
-    for i in range(batches):
-        for j in range(topk):
-            top_idx = np.array([i, result.indices[i, j].numpy()])
-            count += int(np.any(np.all(top_idx == true_idx, axis=1)))
-    return count/(batches*topk)
+    d = np.maximum(pred_top_idx.max(0), true_idx.max(0)) + 1
+    return np.count_nonzero(np.in1d(np.ravel_multi_index(pred_top_idx.T, d),
+                                 np.ravel_multi_index(true_idx.T, d)))/(batches*topk)
 
 
 def compute_accuracy_lsh(y_true, y_pred, lsh_idx, topk=1):

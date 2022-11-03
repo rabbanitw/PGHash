@@ -2,19 +2,19 @@ import tensorflow as tf
 import numpy as np
 # import tensorflow_datasets as tfds
 from mlp import SparseNeuralNetwork
-from dataloader import load_amazon670
 from sparse_bce import sparse_bce, sparse_bce_lsh
 from misc import compute_accuracy, compute_accuracy_lsh
-from dataloader import load_amazon670
 import time
 
 
 if __name__ == '__main__':
 
-    '''
+    # '''
     #b = tf.constant([[1, 0, 0, 0.9, 0.8, 0], [0.7, 1, 0.3, 0.9, 0.5, 0], [1, 0, 0, 0, 0.6, 0.7], [1, 0, 0, 0, 0.6, 0.7],
     #                 [0, 0, 0.7, 0.8, 1, 0], [0.6, 0, 0, 0.8, 0, 1]])
-    c = tf.sparse.eye(5)
+    a = tf.sparse.eye(10)
+    #a = tf.sparse.SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[10, 10])
+    #print(tf.sparse.to_dense(a))
     # b = tf.constant([[1., 0., 0., 0., 0., 0.], [0., 1., 0., 0., 0., 0.], [0., 0., 1., 0., 0., 0.], [0., 0., 0., 1., 0., 0.],
     #                 [0., 0., 0., 0., 1., 0.], [0., 0., 0., 0., 0., 1.]])
 
@@ -22,19 +22,22 @@ if __name__ == '__main__':
         [[1., 0., 0., 0., 0.], [0., 1., 0., 0., 0.], [0., 0., 1., 0., 0.], [0., 0., 0., 1., 0.],
          [0., 0., 0., 0., 1.], [0., 0., 0., 0., 1.]])
 
-    b = tf.random.uniform(shape=(5, 5))
-    print(b)
+    b = tf.random.uniform(shape=(10, 10))
+    result = tf.math.top_k(b, k=1).indices.numpy()
+    acc2 = compute_accuracy(a, b, topk=1)
+    print(acc2)
+    #print(acc2)
     # d = tf.sparse.from_dense(tf.random.uniform(shape=(10, 10)))
-    lsh_idx = np.array([0, 1, 2, 3, 4])
-
-
-    acc = compute_accuracy_lsh(c, b, lsh_idx, topk=1)
-    print(acc)
+    #lsh_idx = np.array([0, 1, 2, 3, 4])
+    #acc = compute_accuracy_lsh(c, b, lsh_idx, topk=1)
+    #print(acc)
     # loss = sparse_bce(c, b)
     # print(loss)
     # loss = sparse_bce_lsh(c, b, np.arange(50))
     # print(loss)
-    '''
+    # '''
+
+
     '''
     bce = tf.keras.losses.BinaryCrossentropy(from_logits=False)
     tr, te = load_amazon670(0, 1, 256)
@@ -51,7 +54,7 @@ if __name__ == '__main__':
     a = 0
     '''
 
-
+    '''
     def topk(input, k, axis=1, ascending=False):
         if not ascending:
             input *= -1
@@ -67,4 +70,4 @@ if __name__ == '__main__':
     k = 2
     print(a)
     print(topk(a, k))
-
+    '''
