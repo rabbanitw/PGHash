@@ -34,7 +34,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
           num_f, num_l, hls, cr, lsh, hash_type, steps_per_lsh,
           acc_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=1)):
 
-    @tf.function
+    # @tf.function
     def train_step(x, y):
         with tf.GradientTape() as tape:
             y_pred = model(x, training=True)
@@ -44,7 +44,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         optimizer.apply_gradients(zip(grads, model.trainable_weights))
         return loss_value, y_pred
 
-    @tf.function
+    # @tf.function
     def test_step(x, y, cur_idx):
         y_pred = model(x, training=False)
         acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
