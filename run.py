@@ -23,7 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('--sdim', type=int, default=8)
     parser.add_argument('--num_tables', type=int, default=50)
     parser.add_argument('--lr', type=int, default=1e-3)
-    parser.add_argument('--cr', type=int, default=0.1)
+    parser.add_argument('--cr', type=float, default=0.1)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
     parser.add_argument('--epochs', type=int, default=5)
