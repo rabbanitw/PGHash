@@ -119,14 +119,15 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     full_model = flatten_weights(model.get_weights())
 
                 total_batches += batch
-                # Log every 10 batches.
+                # Log every 10 iterations
                 if step % 10 == 0:
                     print(
                         "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Accuracy %.4f, [%d Total Samples]" % (
                         rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
                     )
 
-                if step % 10 == 0:
+                # check test accuracy every 100 iterations
+                if step % 100 == 0:
                     if rank == 0:
                         top1_test = AverageMeter()
                         with tf.device(gpu):
