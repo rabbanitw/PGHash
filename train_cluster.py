@@ -33,29 +33,6 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu, sdim, num_tables,
           num_f, num_l, hls, cr, lsh, hash_type, steps_per_lsh, acc_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=1)):
 
-    @tf.function
-    def train_step(x, y):
-        with tf.GradientTape() as tape:
-            y_pred = model(x, training=True)
-            y_true = tf.gather(tf.sparse.to_dense(y), cur_idx, axis=1)
-            loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-        grads = tape.gradient(loss_value, model.trainable_weights)
-        optimizer.apply_gradients(zip(grads, model.trainable_weights))
-        return loss_value, y_pred
-
-    @tf.function
-    def test_step(x, y):
-        y_pred = global_model(x, training=False)
-        acc_metric.update_state(y_pred, tf.sparse.to_dense(y))
-        # acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
-        # return acc1
-
-    def lr_schedule(step, lr, weight=0.05, start_epoch=75):
-        if step >= start_epoch:
-            lr = lr/(1 + weight*(step-start_epoch))
-            optimizer.lr.assign(lr)
-        return lr
-
     top1 = AverageMeter()
     losses = AverageMeter()
     recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, hash_type)
@@ -75,6 +52,27 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         global_layer_shapes, global_layer_sizes = get_model_architecture(global_model)
 
     MPI.COMM_WORLD.Barrier()
+
+    def train_step(model, x, y):
+        with tf.GradientTape() as tape:
+            y_pred = model(x, training=True)
+            y_true = tf.gather(tf.sparse.to_dense(y), cur_idx, axis=1)
+            loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+        grads = tape.gradient(loss_value, model.trainable_weights)
+        optimizer.apply_gradients(zip(grads, model.trainable_weights))
+        return loss_value, y_pred
+
+    def test_step(global_model, x, y):
+        y_pred = global_model(x, training=False)
+        acc_metric.update_state(y_pred, tf.sparse.to_dense(y))
+        # acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
+        # return acc1
+
+    def lr_schedule(step, lr, weight=0.05, start_epoch=75):
+        if step >= start_epoch:
+            lr = lr/(1 + weight*(step-start_epoch))
+            optimizer.lr.assign(lr)
+        return lr
 
     for epoch in range(epochs):
 
@@ -116,7 +114,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                     lsh_time = 0
 
                 # compute training step
-                loss_value, y_pred = train_step(x_batch_train, y_batch_train)
+                loss_value, y_pred = train_step(model, x_batch_train, y_batch_train)
                 # print(tf.config.experimental.get_memory_info('GPU:0'))
 
                 # compute accuracy for the minibatch (top 1 and 5) & store accuracy and loss values
@@ -152,7 +150,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                         t = time.time()
                         global_model.set_weights(unflatten_weights(full_model, global_layer_shapes, global_layer_sizes))
                         for step, (x_batch_test, y_batch_test) in enumerate(test_data):
-                            test_step(x_batch_test, y_batch_test)
+                            test_step(global_model, x_batch_test, y_batch_test)
                             #acc = test_step(x_batch_test, y_batch_test, global_model, np.arange(num_l))
                             #top1_test.update(acc, x_batch_test.get_shape()[0])
                         #test_acc = top1_test.avg

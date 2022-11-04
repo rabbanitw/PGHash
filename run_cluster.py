@@ -79,7 +79,7 @@ if __name__ == '__main__':
     test_data_path = 'Data/' + args.dataset + '/test.txt'
 
     print('Loading and partitioning data...')
-    with tf.device(cpu):
+    with tf.device(gpu):
         train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size,
                                                                         train_data_path, test_data_path)
 
@@ -92,7 +92,6 @@ if __name__ == '__main__':
 
     if lsh:
         worker_layer_dims = [n_features, hls, num_c_layers]
-
     else:
         worker_layer_dims = [n_features, hls, n_labels]
 
