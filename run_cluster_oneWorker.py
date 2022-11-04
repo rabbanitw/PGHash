@@ -9,7 +9,7 @@ from mlp import SparseNeuralNetwork
 from unpack import get_model_architecture, flatten_weights
 from mpi4py import MPI
 import os
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 if __name__ == '__main__':
@@ -70,7 +70,6 @@ if __name__ == '__main__':
     gpu = "gpu:" + str(gpu_id)
 
     print(gpu)
-    print(rank)
 
     # training parameters
     batch_size = args.batch_size
@@ -80,14 +79,9 @@ if __name__ == '__main__':
     test_data_path = 'Data/' + args.dataset + '/test.txt'
 
     print('Loading and partitioning data...')
-    if rank == 0:
-        with tf.device("GPU:0"):
-            train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size,
-                                                                            train_data_path, test_data_path)
-    else:
-        with tf.device("GPU:1"):
-            train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size,
-                                                                            train_data_path, test_data_path)
+    with tf.device(gpu):
+        train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size,
+                                                                        train_data_path, test_data_path)
 
     print('Initializing model...')
     # initialize full final dense layer (Glorot Uniform)
