@@ -64,7 +64,12 @@ if __name__ == '__main__':
         gpu_names.append(gpu.name)
     num_gpus = len(gpu_names)
     gpu_id = rank % num_gpus
-    gpu = gpu_names[gpu_id]
+
+
+    # gpu = gpu_names[gpu_id]
+    gpu = '/GPU:' + str(gpu_id)
+
+    print(gpu)
 
     # training parameters
     batch_size = args.batch_size
