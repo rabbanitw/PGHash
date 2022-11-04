@@ -67,7 +67,7 @@ if __name__ == '__main__':
 
 
     # gpu = gpu_names[gpu_id]
-    gpu = '/GPU:' + str(gpu_id)
+    gpu = "gpu:" + str(gpu_id)
 
     print(gpu)
 

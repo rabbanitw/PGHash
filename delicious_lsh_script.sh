@@ -17,4 +17,4 @@ module load mpi
 module load cuda/11.4.4
 module load cudnn/v8.2.1
 
-mpirun -np 4 python run_cluster.py --dataset Delicious200K --cr 0.1 --epochs 5 --batch_size 32 --hash_type slide_avg --sdim 9
+mpirun -np 1 python run_cluster.py --dataset Delicious200K --cr 0.1 --epochs 5 --batch_size 32 --hash_type slide_avg --sdim 9

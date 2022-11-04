@@ -31,9 +31,9 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu, sdim, num_tables,
-          num_f, num_l, hls, cr, lsh, hash_type, steps_per_lsh):
+          num_f, num_l, hls, cr, lsh, hash_type, steps_per_lsh, acc_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=1)):
 
-    # @tf.function
+    @tf.function
     def train_step(x, y):
         with tf.GradientTape() as tape:
             y_pred = model(x, training=True)
@@ -43,11 +43,12 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         optimizer.apply_gradients(zip(grads, model.trainable_weights))
         return loss_value, y_pred
 
-    # @tf.function
-    def test_step(x, y, model, cur_idx):
-        y_pred = model(x, training=False)
-        acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
-        return acc1
+    @tf.function
+    def test_step(x, y):
+        y_pred = global_model(x, training=False)
+        acc_metric.update_state(y_pred, tf.sparse.to_dense(y))
+        # acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
+        # return acc1
 
     def lr_schedule(step, lr, weight=0.05, start_epoch=75):
         if step >= start_epoch:
@@ -147,14 +148,14 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 #'''
                 if step % 100 == 0:  # or step == 50:
                     if rank == 0:
-                        top1_test = AverageMeter()
+                        # top1_test = AverageMeter()
                         t = time.time()
                         global_model.set_weights(unflatten_weights(full_model, global_layer_shapes, global_layer_sizes))
                         for step, (x_batch_test, y_batch_test) in enumerate(test_data):
-                            #test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
-                            acc = test_step(x_batch_test, y_batch_test, global_model, np.arange(num_l))
-                            top1_test.update(acc, x_batch_test.get_shape()[0])
-                        test_acc = top1_test.avg
+                            test_step(x_batch_test, y_batch_test)
+                            #acc = test_step(x_batch_test, y_batch_test, global_model, np.arange(num_l))
+                            #top1_test.update(acc, x_batch_test.get_shape()[0])
+                        #test_acc = top1_test.avg
                         # put back original model after computing accuracy
                         #tf.keras.backend.clear_session()
                         #worker_layer_dims = [num_f, hls, len(cur_idx)]
@@ -167,9 +168,11 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                         #new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
                         #model.set_weights(new_weights)
                         # print(tf.config.experimental.get_memory_info('GPU:0'))
-                        print("Test Accuracy Top 1: %.4f In %f seconds" % (test_acc, time.time()-t))
-                        # print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
-                        # acc_metric.reset_state()
+                        #print("Test Accuracy Top 1: %.4f In %f seconds" % (test_acc, time.time()-t))
+                        test_acc = acc_metric.result().numpy()
+                        print("Test Accuracy Top 1: %.4f In %f seconds" % (float(test_acc),
+                                                                           time.time()-t))
+                        acc_metric.reset_state()
                 #'''
 
                 # update learning rate
