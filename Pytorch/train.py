@@ -113,8 +113,9 @@ def train(rank, model, optimizer, train_data, test_data, num_f, num_l, args):
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
+            lsh_time = 0
             init_time = time.time()
-            # batch, s = x_batch_train.get_shape()
+            batch, s = x_batch_train.size()
 
             # '''
             get_memory(fname)
@@ -138,12 +139,16 @@ def train(rank, model, optimizer, train_data, test_data, num_f, num_l, args):
             optimizer.step()
             get_memory(fname)
 
+            rec_init = time.time()
             # Gather data and report
             loss_value = loss.item()
-
+            losses.update(loss_value, batch)
+            # Compute accuracy
             acc1 = accuracy(true_output, y_true)[0].numpy()
+            top1.update(acc1, batch)
+            record_time = time.time() - rec_init
 
-            comp_time = time.time() - init_time
+            comp_time = (time.time() - init_time) - (lsh_time + record_time)
 
             # '''
 
@@ -152,34 +157,19 @@ def train(rank, model, optimizer, train_data, test_data, num_f, num_l, args):
                 f.write('==========\n')
 
             '''
-            
-            batch, s = x_batch_train.get_shape()
-            lsh_time = 0
-            loss_value, y_pred = train_step(x_batch_train, y_batch_train, cur_idx)
-
-            
-            # compute accuracy for the minibatch (top 1) & store accuracy and loss values
-            rec_init = time.time()
-            losses.update(np.array(loss_value), batch)
-            acc1 = compute_accuracy(y_batch_train, y_pred, cur_idx, topk=1)
-            top1.update(acc1, batch)
-            record_time = time.time() - rec_init
-            comp_time = (time.time() - init_time) - (lsh_time + record_time)
-            
-
             # communication happens here
             # comm_time = communicator.communicate(model)
-
-            recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, test_acc, loss_value.numpy(),
-                             top1.avg, losses.avg)
-
-            # Save data to output folder
-            recorder.save_to_file()
             '''
 
             comm_time = 0
 
-            total_batches = 0
+            recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc, loss_value,
+                             top1.avg, losses.avg)
+
+            # Save data to output folder
+            recorder.save_to_file()
+
+            total_batches += batch
             # Log every 200 batches.
             if step % 10 == 0:
                 print(
