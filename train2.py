@@ -13,6 +13,15 @@ import os
 import datetime
 
 
+class SparseCE_Loss(tf.keras.losses.Loss):
+    def __init__(self, idx):
+        super().__init__()
+        self.idx = idx
+    def call(self, y_true, y_pred):
+        y_true = tf.gather(tf.sparse.to_dense(y_true), self.idx, axis=1)
+        return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+
+
 def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
     # get input layer for LSH
@@ -36,20 +45,35 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model,
           num_f, num_l, args, acc_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=1)):
 
-    # @tf.function
-    def train_step(x, y, idx):
+    @tf.function
+    def train_step(x, y):
+        # y = tf.gather(tf.sparse.to_dense(y), idx, axis=1)
         with tf.GradientTape() as tape:
             y_pred = model(x, training=True)
-            y_true = tf.gather(tf.sparse.to_dense(y), idx, axis=1)
-            loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+            loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_pred))
         grads = tape.gradient(loss_value, model.trainable_weights)
         optimizer.apply_gradients(zip(grads, model.trainable_weights))
-        return loss_value, y_pred
+        return loss_value
 
     # @tf.function
     def test_step(x, y, cur_idx):
         y_pred = model(x, training=False)
         acc_metric.update_state(y_pred, y)
+
+    def get_memory(filename):
+        mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        with open(filename, 'a') as f:
+            # Dump timestamp, PID and amount of RAM.
+            f.write('{} {} {}\n'.format(datetime.datetime.now(), os.getpid(), mem))
+
+    def get_partial_label(y_data, used_idx, batch_size, full_labels):
+        true_idx = y_data.indices.numpy()
+        y_true = np.zeros((batch_size, full_labels))
+        for i in true_idx:
+            y_true[i[0], i[1]] = 1
+        get_memory(fname)
+        # return y_true[:, used_idx]
+        return tf.convert_to_tensor(y_true[:, used_idx])
 
     # hashing parameters
     sdim = args.sdim
@@ -72,6 +96,12 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     used_idx = np.zeros(num_l)
     cur_idx = np.arange(num_l)
     test_acc = np.NaN
+
+    cur_idx = tf.convert_to_tensor(cur_idx)
+
+    fname = 'r{}.log'.format(rank)
+    if os.path.exists(fname):
+        os.remove(fname)
 
     for epoch in range(epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -114,18 +144,35 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 comm_time = communicator.communicate(model)
             '''
 
-            mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-            fname = 'r{}.log'.format(rank)
+            batch, s = x_batch_train.get_shape()
+            get_memory(fname)
+            y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
+
+            # '''
+            get_memory(fname)
+            with tf.GradientTape() as tape:
+                y_pred = model(x_batch_train, training=True)
+                get_memory(fname)
+                loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+                get_memory(fname)
+            grads = tape.gradient(loss_value, model.trainable_weights)
+            get_memory(fname)
+            optimizer.apply_gradients(zip(grads, model.trainable_weights))
+            get_memory(fname)
+
+            # '''
+
             with open(fname, 'a') as f:
-                 # Dump timestamp, PID and amount of RAM.
-                 f.write('{} {} {}\n'.format(datetime.datetime.now(), os.getpid(), mem))
+                # Dump timestamp, PID and amount of RAM.
+                f.write('==========\n')
 
-
+            '''
             init_time = time.time()
             batch, s = x_batch_train.get_shape()
             lsh_time = 0
             loss_value, y_pred = train_step(x_batch_train, y_batch_train, cur_idx)
 
+            
             # compute accuracy for the minibatch (top 1) & store accuracy and loss values
             rec_init = time.time()
             losses.update(np.array(loss_value), batch)
@@ -133,16 +180,20 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
             comp_time = (time.time() - init_time) - (lsh_time + record_time)
+            
 
             # communication happens here
             # comm_time = communicator.communicate(model)
-            comm_time = 0
 
             recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, test_acc, loss_value.numpy(),
                              top1.avg, losses.avg)
 
             # Save data to output folder
             recorder.save_to_file()
+            '''
+            comm_time = 0
+            comp_time = 0
+            acc1 = np.inf
 
             total_batches += batch
             # Log every 200 batches.
