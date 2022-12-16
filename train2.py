@@ -99,6 +99,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
     cur_idx = tf.convert_to_tensor(cur_idx)
 
+    print(model.summary())
+
     fname = 'r{}.log'.format(rank)
     if os.path.exists(fname):
         os.remove(fname)
@@ -108,6 +110,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
+            lsh_time = 0
+            init_time = time.time()
 
             '''
             # run lsh here before training if being used
@@ -160,23 +164,25 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
             get_memory(fname)
 
-            # '''
-
             with open(fname, 'a') as f:
                 # Dump timestamp, PID and amount of RAM.
                 f.write('==========\n')
 
             '''
-            init_time = time.time()
             batch, s = x_batch_train.get_shape()
             lsh_time = 0
             loss_value, y_pred = train_step(x_batch_train, y_batch_train, cur_idx)
+            '''
 
             
             # compute accuracy for the minibatch (top 1) & store accuracy and loss values
             rec_init = time.time()
             losses.update(np.array(loss_value), batch)
-            acc1 = compute_accuracy(y_batch_train, y_pred, cur_idx, topk=1)
+
+            # NEED TO FIX THIS ACCURACY METRIC
+            # acc1 = compute_accuracy(y_batch_train, y_pred, cur_idx, topk=1)
+
+            acc1 = acc_metric(y_pred, tf.sparse.to_dense(y_batch_train))
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
             comp_time = (time.time() - init_time) - (lsh_time + record_time)
@@ -184,16 +190,14 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
             # communication happens here
             # comm_time = communicator.communicate(model)
+            comm_time = 0
 
             recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, test_acc, loss_value.numpy(),
                              top1.avg, losses.avg)
 
             # Save data to output folder
             recorder.save_to_file()
-            '''
-            comm_time = 0
-            comp_time = 0
-            acc1 = np.inf
+            #'''
 
             total_batches += batch
             # Log every 200 batches.

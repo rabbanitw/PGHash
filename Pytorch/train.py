@@ -6,7 +6,7 @@ from misc import compute_accuracy, compute_accuracy_lsh, AverageMeter, Recorder
 from mpi4py import MPI
 import torch
 import time
-
+from mlp import NeuralNetwork
 import resource
 import os
 import datetime
@@ -46,7 +46,9 @@ def accuracy(output: torch.Tensor, target: torch.Tensor, topk=(1,)) -> List[torc
         y_pred = y_pred.t()  # [B, maxk] -> [maxk, B] Expects input to be <= 2-D tensor and transposes dimensions 0 and 1.
 
         _, target = target.topk(k=maxk, dim=1)
-        target = target.flatten()
+        target = target.t()
+        #print(target.shape)
+        #target = target.flatten()
 
 
         # - get the credit for each example if the models predictions is in maxk values (main crux of code)
@@ -54,10 +56,10 @@ def accuracy(output: torch.Tensor, target: torch.Tensor, topk=(1,)) -> List[torc
         # for each example we compare if the model's best prediction matches the truth. If yes we get an entry of 1.
         # if the k'th top answer of the model matches the truth we get 1.
         # Note: this for any example in batch we can only ever get 1 match (so we never overestimate accuracy <1)
-        target_reshaped = target.view(1, -1).expand_as(y_pred)  # [B] -> [B, 1] -> [maxk, B]
+        # target_reshaped = target.view(1, -1).expand_as(y_pred)  # [B] -> [B, 1] -> [maxk, B]
 
         # compare every topk's model prediction with the ground truth & give credit if any matches the ground truth
-        correct = (y_pred == target_reshaped)  # [maxk, B] were for each example we know which topk prediction matched truth
+        correct = (y_pred == target)  # [maxk, B] were for each example we know which topk prediction matched truth
         # original: correct = pred.eq(target.view(1, -1).expand_as(pred))
 
         # -- get topk accuracy
@@ -83,6 +85,9 @@ def train(rank, model, optimizer, train_data, test_data, num_f, num_l, args):
             # Dump timestamp, PID and amount of RAM.
             f.write('{} {} {}\n'.format(datetime.datetime.now(), os.getpid(), mem))
 
+    def softmax_cross_entropy_with_logits(logits, labels, dim=-1):
+        return (-labels * torch.nn.functional.log_softmax(logits, dim=dim)).sum(dim=dim)
+
     # hashing parameters
     sdim = args.sdim
     num_tables = args.num_tables
@@ -107,36 +112,38 @@ def train(rank, model, optimizer, train_data, test_data, num_f, num_l, args):
     if os.path.exists(fname):
         os.remove(fname)
 
+    model = NeuralNetwork(num_f, hls, num_l)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    criterion = torch.nn.BCEWithLogitsLoss(reduction='sum')
+    model.train(True)
+
     for epoch in range(epochs):
         print("\nStart of epoch %d" % (epoch,))
 
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
+
             lsh_time = 0
             init_time = time.time()
-            batch, s = x_batch_train.size()
+            batch = x_batch_train.size(0)
 
             # '''
             get_memory(fname)
 
-            # Zero your gradients for every batch!
-            optimizer.zero_grad()
-
             # Make predictions for this batch
-            outputs = model(x_batch_train)
+            outputs = model(x_batch_train.to_dense())
             get_memory(fname)
 
             # Compute the loss and its gradients
             y_true = y_batch_train.to_dense()
-            true_output = outputs.to_dense()
-            loss = torch.nn.functional.cross_entropy(true_output, y_true)
-            get_memory(fname)
-            loss.backward()
-            get_memory(fname)
+            loss = torch.mean(softmax_cross_entropy_with_logits(outputs, y_true))
 
+            get_memory(fname)
             # Adjust learning weights
+            loss.backward()
             optimizer.step()
+            optimizer.zero_grad()
             get_memory(fname)
 
             rec_init = time.time()
@@ -144,7 +151,7 @@ def train(rank, model, optimizer, train_data, test_data, num_f, num_l, args):
             loss_value = loss.item()
             losses.update(loss_value, batch)
             # Compute accuracy
-            acc1 = accuracy(true_output, y_true)[0].numpy()
+            acc1 = accuracy(outputs, y_true, topk=(1,))[0].numpy()
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
 

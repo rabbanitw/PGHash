@@ -1,5 +1,4 @@
 from typing import Union
-
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -7,9 +6,10 @@ from scipy.sparse import (coo_matrix,
                           csr_matrix,
                           vstack)
 from xclib.data import data_utils
+import tensorflow as tf
 
 
-class SparseDataset():
+class SparseDataset:
     """
     Custom Dataset class for scipy sparse matrix
     """
@@ -81,24 +81,46 @@ def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
     features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
     features_t, labels_t, num_labels_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
 
+    size = 100
+
     # partition data amongst workers
     worker_features = partition_sparse_dataset(features, rank, size)
     worker_labels = partition_sparse_dataset(labels, rank, size)
     worker_features_t = partition_sparse_dataset(features_t, rank, size)
     worker_labels_t = partition_sparse_dataset(labels_t, rank, size)
 
+    #'''
+    X = worker_features.todense()
+    Y = worker_labels.todense()
+
+    if rank == 0:
+        print(X.shape)
+
+    tensor_x = torch.Tensor(X)  # transform to torch tensor
+    tensor_y = torch.Tensor(Y)
+
+    my_dataset = torch.utils.data.TensorDataset(tensor_x, tensor_y)  # create your datset
+    train_dl = torch.utils.data.DataLoader(my_dataset, batch_size=batch_size)  # create your dataloader
+
+    trn_dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(batch_size)
+    #'''
+
+    '''
     # Create sparse tensors
     train_ds = SparseDataset(worker_features, worker_labels)
     sampler = torch.utils.data.sampler.BatchSampler(
         torch.utils.data.sampler.RandomSampler(train_ds), #, generator=torch.Generator(device='cuda')),
         batch_size=batch_size, drop_last=False)
     train_dl = DataLoader(train_ds,
-                    batch_size=1,
-                    collate_fn=sparse_batch_collate,
-                    # generator=torch.Generator(device='cuda'),
-                    sampler=sampler)
+                          batch_size=1,
+                          collate_fn=sparse_batch_collate,
+                          # generator=torch.Generator(device='cuda'),
+                          sampler=sampler)
+    '''
 
-    return train_dl, num_features, num_labels
+
+
+    return train_dl, trn_dataset, num_features, num_labels
 
 
 def partition_sparse_dataset(data_array, rank, size, partition_type='Simple'):
@@ -114,3 +136,11 @@ def partition_sparse_dataset(data_array, rank, size, partition_type='Simple'):
     # To Do: implement other partition methods below...
     else:
         return np.array_split(data_array, size)[rank]
+
+
+'''
+    train_dl = DataLoader(train_ds,
+                          batch_size=batch_size,
+                          collate_fn=sparse_batch_collate,
+                          shuffle=True)
+    '''
