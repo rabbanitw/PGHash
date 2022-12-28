@@ -6,7 +6,7 @@
 #SBATCH --time=00:30:00    # how long you think your job will take to complete; format=hh:mm:ss
 #SBATCH --account=scavenger    # set QOS, this will determine what resources can be requested
 #SBATCH --qos=scavenger    # set QOS, this will determine what resources can be requested
-#SBATCH --partition=s
+#SBATCH --partition=scavenger
 #SBATCH --ntasks=1
 #SBATCH --mem 128gb         # memory required by job; if unit is not specified MB will be assumed
 #SBATCH --nice=0
