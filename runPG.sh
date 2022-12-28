@@ -12,7 +12,10 @@
 #SBATCH --nice=0
 #SBATCH --mail-type=END   # Valid type values are NONE, BEGIN, END, FAIL, REQUEUE
 
+module purge
 module load mpi
+module load cuda/11.4.4
+source ../../cmlscratch/marcob/environments/pghash/bin/activate
 
 mpirun -np 1 python runSimplePG.py --dataset Delicious200K
 
