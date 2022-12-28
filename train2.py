@@ -72,7 +72,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         for i in true_idx:
             y_true[i[0], i[1]] = 1
         get_memory(fname)
-        return tf.convert_to_tensor(y_true[:, used_idx])
+        return tf.convert_to_tensor(y_true[:, used_idx], dtype=tf.float32)
 
     # hashing parameters
     sdim = args.sdim
@@ -151,6 +151,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             get_memory(fname)
             y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
 
+            print(tf.norm(y_true - tf.sparse.to_dense(y_batch_train)))
+
             '''
             get_memory(fname)
             with tf.GradientTape() as tape:
@@ -166,8 +168,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             with open(fname, 'a') as f:
                 # Dump timestamp, PID and amount of RAM.
                 f.write('==========\n')
-
             '''
+
             # '''
             # batch, s = x_batch_train.get_shape()
             lsh_time = 0
