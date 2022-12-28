@@ -17,7 +17,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # Add an argument
     parser.add_argument('--name', type=str, default='Test')
-    parser.add_argument('--dataset', type=str, default='Amazon670k')
+    parser.add_argument('--dataset', type=str, default='Amazon670K')
     parser.add_argument('--graph_type', type=str, default='ring')
     parser.add_argument('--hash_type', type=str, default='slide_vanilla')
     parser.add_argument('--randomSeed', type=int, default=1203)

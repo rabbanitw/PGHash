@@ -16,4 +16,6 @@ module load mpi
 module load cuda/11.4.4
 module load cudnn/v8.2.1
 
-mpirun -np 8 python run2.py --mca btl_openib_warn_no_device_params_found 0 --mca orte_base_help_aggregate 0 --mca btl ^openib ...
+mpirun -np 8 python run2.py --dataset Delicious200K
+
+# --mca btl_openib_warn_no_device_params_found 0 --mca orte_base_help_aggregate 0 --mca btl ^openib ...
