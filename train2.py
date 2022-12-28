@@ -136,14 +136,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             '''
 
             batch = x_batch_train.get_shape()[0]
-            get_memory(fname)
             y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
-            get_memory(fname)
             loss_value, y_pred = train_step(x_batch_train, y_true)
-            get_memory(fname)
-            with open(fname, 'a') as f:
-                # Dump timestamp, PID and amount of RAM.
-                f.write('==========\n')
 
             comm_time = 0
             lsh_time = 0
