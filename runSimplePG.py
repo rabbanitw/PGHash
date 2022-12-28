@@ -113,6 +113,8 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
                 model.set_weights(new_weights)
 
+            get_memory(fname)
+
             init_time = time.time()
 
             batch = x_batch_train.get_shape()[0]
