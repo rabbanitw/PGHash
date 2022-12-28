@@ -3,23 +3,10 @@ import numpy as np
 import os
 
 
-def compute_accuracy(y_true, y_pred, lsh_idx, topk=1):
-    # if numpy:
-    #    batches, c = y_pred.shape
-    #    translated_pred = lsh_idx[np.array(find_topk(y_pred, k=topk))]
-    batches, c = y_pred.get_shape()
-    # translated_pred = lsh_idx[tf.math.top_k(y_pred, k=topk).indices.numpy()]
-    translated_pred = lsh_idx[np.array(tf.math.top_k(y_pred, k=topk).indices)]
-    pred_top_idx = np.hstack((np.arange(batches)[:, np.newaxis], translated_pred))
-    true_idx = y_true.indices.numpy()
-    d = np.maximum(pred_top_idx.max(0), true_idx.max(0)) + 1
-    return np.count_nonzero(np.in1d(np.ravel_multi_index(pred_top_idx.T, d),
-                                 np.ravel_multi_index(true_idx.T, d)))/(batches*topk)
-
-
-def compute_accuracy_lsh(y_true, y_pred, lsh_idx, topk=1):
-    result_idx = find_topk(y_pred.numpy(), topk)
-    batches, c = y_pred.get_shape()
+def compute_accuracy_lsh(y_pred, y_true, lsh_idx, topk=1):
+    # result_idx = find_topk(y_pred.numpy(), topk)
+    val, result_idx = tf.math.top_k(y_pred, k=topk)
+    batches = y_pred.get_shape()[0]
     true_idx = y_true.indices.numpy()
     count = 0
     for i in range(batches):
@@ -28,6 +15,18 @@ def compute_accuracy_lsh(y_true, y_pred, lsh_idx, topk=1):
             top_idx = np.array([i, transform_idx_y])
             count += int(np.any(np.all(top_idx == true_idx, axis=1)))
     return count/(batches*topk)
+
+
+def find_topk(input, k, axis=1, ascending=False):
+    if not ascending:
+        input *= -1
+    ind = np.argpartition(input, k, axis=axis)
+    ind = np.take(ind, np.arange(k), axis=axis)  # k non-sorted indices
+    input = np.take_along_axis(input, ind, axis=axis)  # k non-sorted values
+    # sort within k elements
+    ind_part = np.argsort(input, axis=axis)
+    ind = np.take_along_axis(ind, ind_part, axis=axis)
+    return ind
 
 
 class AverageMeter(object):
@@ -103,14 +102,17 @@ class Recorder(object):
         #    f.write(str(self.args) + '\n')
         #    f.write(self.args.description + '\n')
 
-
-def find_topk(input, k, axis=1, ascending=False):
-    if not ascending:
-        input *= -1
-    ind = np.argpartition(input, k, axis=axis)
-    ind = np.take(ind, np.arange(k), axis=axis)  # k non-sorted indices
-    input = np.take_along_axis(input, ind, axis=axis)  # k non-sorted values
-    # sort within k elements
-    ind_part = np.argsort(input, axis=axis)
-    ind = np.take_along_axis(ind, ind_part, axis=axis)
-    return ind
+'''
+def compute_accuracy(y_true, y_pred, lsh_idx, topk=1):
+    # if numpy:
+    #    batches, c = y_pred.shape
+    #    translated_pred = lsh_idx[np.array(find_topk(y_pred, k=topk))]
+    batches, c = y_pred.get_shape()
+    # translated_pred = lsh_idx[tf.math.top_k(y_pred, k=topk).indices.numpy()]
+    translated_pred = lsh_idx[np.array(tf.math.top_k(y_pred, k=topk).indices)]
+    pred_top_idx = np.hstack((np.arange(batches)[:, np.newaxis], translated_pred))
+    true_idx = y_true.indices.numpy()
+    d = np.maximum(pred_top_idx.max(0), true_idx.max(0)) + 1
+    return np.count_nonzero(np.in1d(np.ravel_multi_index(pred_top_idx.T, d),
+                                 np.ravel_multi_index(true_idx.T, d)))/(batches*topk)
+'''

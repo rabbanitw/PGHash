@@ -6,11 +6,13 @@ from communicators import CentralizedSGD
 from mlp import SparseNeuralNetwork
 from unpack import get_model_architecture, flatten_weights
 from mpi4py import MPI
-import os
-from misc import AverageMeter, Recorder
+from misc import AverageMeter, Recorder, compute_accuracy_lsh
 from unpack import get_sub_model, get_full_dense, get_model_architecture, unflatten_weights
 from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 import time
+import resource
+import os
+import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
@@ -47,14 +49,20 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
     def test_step(x, y, cur_idx):
         y_pred = model(x, training=False)
-        acc_metric.update_state(y_pred, y)
 
     def get_partial_label(y_data, used_idx, batch_size, full_labels):
         true_idx = y_data.indices.numpy()
         y_true = np.zeros((batch_size, full_labels))
         for i in true_idx:
             y_true[i[0], i[1]] = 1
-        return tf.convert_to_tensor(y_true[:, used_idx], dtype=tf.float32)
+        y_true_sub = tf.convert_to_tensor(y_true[:, used_idx], dtype=tf.float32)
+        return y_true_sub, tf.convert_to_tensor(y_true, dtype=tf.float32)
+
+    def get_memory(filename):
+        mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        with open(filename, 'a') as f:
+            # Dump timestamp, PID and amount of RAM.
+            f.write('{} {} {}\n'.format(datetime.datetime.now(), os.getpid(), mem))
 
     # hashing parameters
     sdim = args.sdim
@@ -78,7 +86,9 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     cur_idx = np.arange(num_l)
     test_acc = np.NaN
 
-    acc_metric = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
+    fname = 'r{}.log'.format(rank)
+    if os.path.exists(fname):
+        os.remove(fname)
 
     for epoch in range(epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -106,7 +116,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             init_time = time.time()
 
             batch = x_batch_train.get_shape()[0]
-            y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
+            y_true, y_true_full = get_partial_label(y_batch_train, cur_idx, batch, num_l)
             loss_value, y_pred = train_step(x_batch_train, y_true)
 
             comm_time = 0
@@ -114,10 +124,12 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             # communication happens here
             # comm_time = communicator.communicate(model)
 
+            get_memory(fname)
+
             # compute accuracy for the minibatch (top 1) & store accuracy and loss values
             rec_init = time.time()
             losses.update(np.array(loss_value), batch)
-            acc1 = acc_metric(y_pred, y_true)
+            acc1 = compute_accuracy_lsh(y_pred, y_batch_train, cur_idx)
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
             comp_time = (time.time() - init_time) - (lsh_time + record_time)
@@ -149,7 +161,7 @@ if __name__ == '__main__':
     parser.add_argument('--name', type=str, default='Test')
     parser.add_argument('--dataset', type=str, default='Amazon670K')
     parser.add_argument('--graph_type', type=str, default='ring')
-    parser.add_argument('--hash_type', type=str, default='slide_vanilla')
+    parser.add_argument('--hash_type', type=str, default='slide_avg')
     parser.add_argument('--randomSeed', type=int, default=1203)
     parser.add_argument('--lsh', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--sdim', type=int, default=8)
@@ -217,7 +229,19 @@ if __name__ == '__main__':
     # initialize D-SGD or Centralized SGD
     # communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
     communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
-    full_model = flatten_weights(model.get_weights())
+
+    if cr < 1:
+        partial_model = flatten_weights(model.get_weights())
+        partial_size = partial_model.size
+        half_model_size = (n_features * hls) + hls + (4 * hls)
+        missing_bias = n_labels - num_c_layers
+        missing_weights = hls * (n_labels - num_c_layers)
+        full_dense_weights = hls * n_labels
+        full_model = np.zeros(partial_size + missing_weights + missing_bias)
+        full_model[:half_model_size] = partial_model[:half_model_size]
+        full_model[half_model_size:(half_model_size + full_dense_weights)] = initial_final_dense.T.flatten()
+    else:
+        full_model = flatten_weights(model.get_weights())
 
     print('Beginning training...')
     full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data,

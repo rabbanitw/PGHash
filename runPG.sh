@@ -6,7 +6,7 @@
 #SBATCH --time=00:30:00    # how long you think your job will take to complete; format=hh:mm:ss
 #SBATCH --account=scavenger    # set QOS, this will determine what resources can be requested
 #SBATCH --qos=scavenger    # set QOS, this will determine what resources can be requested
-#SBATCH --partition=scavenger
+#SBATCH --partition=s
 #SBATCH --ntasks=1
 #SBATCH --mem 128gb         # memory required by job; if unit is not specified MB will be assumed
 #SBATCH --nice=0
@@ -14,6 +14,6 @@
 
 module load mpi
 
-mpirun -np 1 python runPGnoLSH.py --dataset Delicious200K
+mpirun -np 1 python runSimplePG.py --dataset Delicious200K
 
 # --mca btl_openib_warn_no_device_params_found 0 --mca orte_base_help_aggregate 0 --mca btl ^openib ...
