@@ -72,7 +72,6 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         for i in true_idx:
             y_true[i[0], i[1]] = 1
         get_memory(fname)
-        # return y_true[:, used_idx]
         return tf.convert_to_tensor(y_true[:, used_idx])
 
     # hashing parameters
@@ -99,7 +98,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
     cur_idx = tf.convert_to_tensor(cur_idx)
 
-    print(model.summary())
+    print(cr)
 
     fname = 'r{}.log'.format(rank)
     if os.path.exists(fname):
@@ -182,8 +181,11 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
             # NEED TO FIX THIS ACCURACY METRIC
             # acc1 = compute_accuracy(y_batch_train, y_pred, cur_idx, topk=1)
-
+            new_acc = acc_metric(y_pred, y_true)
             acc1 = acc_metric(y_pred, tf.sparse.to_dense(y_batch_train))
+            print(new_acc)
+            print(acc1)
+
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
             comp_time = (time.time() - init_time) - (lsh_time + record_time)
