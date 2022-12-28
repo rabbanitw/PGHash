@@ -13,15 +13,6 @@ import os
 import datetime
 
 
-class SparseCE_Loss(tf.keras.losses.Loss):
-    def __init__(self, idx):
-        super().__init__()
-        self.idx = idx
-    def call(self, y_true, y_pred):
-        y_true = tf.gather(tf.sparse.to_dense(y_true), self.idx, axis=1)
-        return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-
-
 def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
     # get input layer for LSH
@@ -43,11 +34,10 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
 
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model,
-          num_f, num_l, args, acc_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=1)):
+          num_f, num_l, args):
 
     # @tf.function
     def train_step(x, y):
-        # y = tf.gather(tf.sparse.to_dense(y), idx, axis=1)
         with tf.GradientTape() as tape:
             y_pred = model(x, training=True)
             loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_pred))
@@ -71,7 +61,6 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         y_true = np.zeros((batch_size, full_labels))
         for i in true_idx:
             y_true[i[0], i[1]] = 1
-        get_memory(fname)
         return tf.convert_to_tensor(y_true[:, used_idx], dtype=tf.float32)
 
     # hashing parameters
@@ -97,8 +86,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     test_acc = np.NaN
 
     cur_idx = tf.convert_to_tensor(cur_idx)
-
-    print(cr)
+    acc_metric = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
 
     fname = 'r{}.log'.format(rank)
     if os.path.exists(fname):
@@ -147,55 +135,29 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 comm_time = communicator.communicate(model)
             '''
 
-            batch, s = x_batch_train.get_shape()
+            batch = x_batch_train.get_shape(0)
             get_memory(fname)
             y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
-
-            print(tf.norm(y_true - tf.sparse.to_dense(y_batch_train)))
-
-            '''
             get_memory(fname)
-            with tf.GradientTape() as tape:
-                y_pred = model(x_batch_train, training=True)
-                get_memory(fname)
-                loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-                get_memory(fname)
-            grads = tape.gradient(loss_value, model.trainable_weights)
+            loss_value, y_pred = train_step(x_batch_train, y_true)
             get_memory(fname)
-            optimizer.apply_gradients(zip(grads, model.trainable_weights))
-            get_memory(fname)
-
             with open(fname, 'a') as f:
                 # Dump timestamp, PID and amount of RAM.
                 f.write('==========\n')
-            '''
 
-            # '''
-            # batch, s = x_batch_train.get_shape()
+            comm_time = 0
             lsh_time = 0
-            loss_value, y_pred = train_step(x_batch_train, y_true)
-            # '''
 
-            
             # compute accuracy for the minibatch (top 1) & store accuracy and loss values
             rec_init = time.time()
             losses.update(np.array(loss_value), batch)
-
-            # NEED TO FIX THIS ACCURACY METRIC
-            # acc1 = compute_accuracy(y_batch_train, y_pred, cur_idx, topk=1)
-            new_acc = acc_metric(y_pred, y_true)
-            acc1 = acc_metric(y_pred, tf.sparse.to_dense(y_batch_train))
-            print(new_acc)
-            print(acc1)
-
+            acc1 = acc_metric(y_pred, y_true)
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
             comp_time = (time.time() - init_time) - (lsh_time + record_time)
-            
 
             # communication happens here
             # comm_time = communicator.communicate(model)
-            comm_time = 0
 
             recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, test_acc, loss_value.numpy(),
                              top1.avg, losses.avg)
