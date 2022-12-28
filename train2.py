@@ -135,7 +135,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 comm_time = communicator.communicate(model)
             '''
 
-            batch = x_batch_train.get_shape(0)
+            batch = x_batch_train.get_shape()[0]
             get_memory(fname)
             y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
             get_memory(fname)
