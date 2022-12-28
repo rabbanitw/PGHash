@@ -78,7 +78,6 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     cur_idx = np.arange(num_l)
     test_acc = np.NaN
 
-    cur_idx = tf.convert_to_tensor(cur_idx)
     acc_metric = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
 
     for epoch in range(epochs):
@@ -86,7 +85,24 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
 
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
-            lsh_time = 0
+
+            if step == 0:
+
+                # compute LSH
+                final_dense = get_full_dense(full_model, num_f, num_l, hls)
+                cur_idx = run_lsh(model, x_batch_train, final_dense, sdim, int(num_tables), cr, hash_type)
+                used_idx[cur_idx] += 1
+
+                worker_layer_dims = [num_f, hls, len(cur_idx)]
+                model = SparseNeuralNetwork(worker_layer_dims)
+                layer_shapes, layer_sizes = get_model_architecture(model)
+
+                # set new sub-model
+                w, b = get_sub_model(full_model, cur_idx, start_idx_b, num_f, hls)
+                sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
+                new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
+                model.set_weights(new_weights)
+
             init_time = time.time()
 
             batch = x_batch_train.get_shape()[0]
