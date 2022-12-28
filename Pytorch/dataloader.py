@@ -81,7 +81,7 @@ def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
     features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
     features_t, labels_t, num_labels_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
 
-    size = 100
+    # size = 10
 
     # partition data amongst workers
     worker_features = partition_sparse_dataset(features, rank, size)
@@ -89,7 +89,7 @@ def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
     worker_features_t = partition_sparse_dataset(features_t, rank, size)
     worker_labels_t = partition_sparse_dataset(labels_t, rank, size)
 
-    #'''
+    '''
     X = worker_features.todense()
     Y = worker_labels.todense()
 
@@ -103,9 +103,9 @@ def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
     train_dl = torch.utils.data.DataLoader(my_dataset, batch_size=batch_size)  # create your dataloader
 
     trn_dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(batch_size)
-    #'''
-
     '''
+
+    # '''
     # Create sparse tensors
     train_ds = SparseDataset(worker_features, worker_labels)
     sampler = torch.utils.data.sampler.BatchSampler(
@@ -116,8 +116,8 @@ def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
                           collate_fn=sparse_batch_collate,
                           # generator=torch.Generator(device='cuda'),
                           sampler=sampler)
-    '''
-
+    # '''
+    trn_dataset = None
 
 
     return train_dl, trn_dataset, num_features, num_labels

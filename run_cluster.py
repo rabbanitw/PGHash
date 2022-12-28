@@ -57,6 +57,7 @@ if __name__ == '__main__':
     # G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
     # Assign GPUs and store CPU name
+    '''
     cpu = tf.config.list_logical_devices('CPU')[0].name
     gpus = tf.config.list_logical_devices('GPU')
     gpu_names = []
@@ -71,6 +72,7 @@ if __name__ == '__main__':
 
     print(gpu)
     print(rank)
+    '''
 
     # training parameters
     batch_size = args.batch_size
@@ -80,14 +82,8 @@ if __name__ == '__main__':
     test_data_path = 'Data/' + args.dataset + '/test.txt'
 
     print('Loading and partitioning data...')
-    if rank == 0:
-        with tf.device("GPU:0"):
-            train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size,
-                                                                            train_data_path, test_data_path)
-    else:
-        with tf.device("GPU:1"):
-            train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size,
-                                                                            train_data_path, test_data_path)
+    train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size, train_data_path,
+                                                                    test_data_path)
 
     print('Initializing model...')
     # initialize full final dense layer (Glorot Uniform)
@@ -101,42 +97,41 @@ if __name__ == '__main__':
     else:
         worker_layer_dims = [n_features, hls, n_labels]
 
-    # Load compressed model onto designated GPU
-    with tf.device(gpu):
+    model = SparseNeuralNetwork(worker_layer_dims)
 
-        model = SparseNeuralNetwork(worker_layer_dims)
+    full_model = None
+    # get model architecture
+    layer_shapes, layer_sizes = get_model_architecture(model)
 
-        full_model = None
-        # get model architecture
-        layer_shapes, layer_sizes = get_model_architecture(model)
-
-        optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
 
     # load full model onto CPU and NOT the GPU (due to memory issues)
-    with tf.device(cpu):
-        if lsh:
-            partial_model = flatten_weights(model.get_weights())
-            partial_size = partial_model.size
-            half_model_size = (n_features * hls) + hls + (4 * hls)
-            missing_bias = n_labels-num_c_layers
-            missing_weights = hls*(n_labels-num_c_layers)
-            full_dense_weights = hls*n_labels
-            full_model = np.zeros(partial_size + missing_weights + missing_bias)
-            full_model[:half_model_size] = partial_model[:half_model_size]
-            full_model[half_model_size:(half_model_size+full_dense_weights)] = initial_final_dense.T.flatten()
-            # initialize Centralized LSH Communicator
-            communicator = LSHCentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1,
-                                             n_features, n_labels, hls)
-        else:
-            # initialize D-SGD or Centralized SGD
-            # communicator = DecentralizedSGD(rank, sieze, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
-            communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
-            full_model = flatten_weights(model.get_weights())
+    '''
+    if lsh:
+        partial_model = flatten_weights(model.get_weights())
+        partial_size = partial_model.size
+        half_model_size = (n_features * hls) + hls + (4 * hls)
+        missing_bias = n_labels-num_c_layers
+        missing_weights = hls*(n_labels-num_c_layers)
+        full_dense_weights = hls*n_labels
+        full_model = np.zeros(partial_size + missing_weights + missing_bias)
+        full_model[:half_model_size] = partial_model[:half_model_size]
+        full_model[half_model_size:(half_model_size+full_dense_weights)] = initial_final_dense.T.flatten()
+        # initialize Centralized LSH Communicator
+        communicator = LSHCentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1,
+                                         n_features, n_labels, hls)
+    else:
+        # initialize D-SGD or Centralized SGD
+        # communicator = DecentralizedSGD(rank, sieze, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
+        communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
+        full_model = flatten_weights(model.get_weights())
+    '''
+    communicator = None
 
     print('Beginning training...')
     full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data,
-                                                 full_model, epochs, gpu, cpu, sdim, num_tables,
-                                                 n_features, n_labels, hls, cr, lsh, hash_type, steps_per_lsh)
+                                                 full_model, epochs, sdim, num_tables, n_features, n_labels, hls, cr,
+                                                 lsh, hash_type, steps_per_lsh)
 
     recv_indices = None
     if rank == 0:

@@ -9,6 +9,9 @@ from mpi4py import MPI
 import time
 import gc
 
+import resource
+import os
+import datetime
 
 def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 
@@ -30,7 +33,7 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
         return slide_avg(in_layer, final_dense_w, sdim, num_tables, cr)
 
 
-def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, gpu, cpu, sdim, num_tables,
+def train(rank, model, optimizer, communicator, train_data, test_data, full_model, epochs, sdim, num_tables,
           num_f, num_l, hls, cr, lsh, hash_type, steps_per_lsh, acc_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=1)):
 
     top1 = AverageMeter()
@@ -68,147 +71,129 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         # acc1 = compute_accuracy_lsh(y, y_pred, cur_idx, topk=1)
         # return acc1
 
+    def get_memory(filename):
+        mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        with open(filename, 'a') as f:
+            # Dump timestamp, PID and amount of RAM.
+            f.write('{} {} {}\n'.format(datetime.datetime.now(), os.getpid(), mem))
+
+    def get_partial_label(y_data, used_idx, batch_size, full_labels):
+        true_idx = y_data.indices.numpy()
+        y_true = np.zeros((batch_size, full_labels))
+        for i in true_idx:
+            y_true[i[0], i[1]] = 1
+        # return y_true[:, used_idx]
+        return tf.convert_to_tensor(y_true[:, used_idx])
+
     def lr_schedule(step, lr, weight=0.05, start_epoch=75):
         if step >= start_epoch:
             lr = lr/(1 + weight*(step-start_epoch))
             optimizer.lr.assign(lr)
         return lr
 
-    for epoch in range(epochs):
+    fname = 'r{}.log'.format(rank)
+    if os.path.exists(fname):
+        os.remove(fname)
+
+    for epoch in range(1, epochs+1):
 
         print("\nStart of epoch %d" % (epoch,))
-        with tf.device(gpu):
         # Iterate over the batches of the dataset.
-            for step, (x_batch_train, y_batch_train) in enumerate(train_data):
+        for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
-                total_steps += 1
-                init_time = time.time()
-                batch, s = x_batch_train.get_shape()
+            total_steps += 1
+            init_time = time.time()
+            batch, s = x_batch_train.get_shape()
 
-                # run lsh here before training if being used
-                if lsh:
-                    lsh_init_time = time.time()
-                    # periodic lsh
-                    if step % steps_per_lsh == 0:
+            # run lsh here before training if being used
+            '''
+            if lsh:
+                lsh_init_time = time.time()
+                # periodic lsh
+                if step % steps_per_lsh == 0:
 
-                        # compute LSH
-                        final_dense = get_full_dense(full_model, num_f, num_l, hls)
-                        cur_idx = run_lsh(model, x_batch_train, final_dense, sdim, int(num_tables), cr,
-                                          hash_type)
-                        used_idx[cur_idx] += 1
+                    # compute LSH
+                    final_dense = get_full_dense(full_model, num_f, num_l, hls)
+                    cur_idx = run_lsh(model, x_batch_train, final_dense, sdim, int(num_tables), cr,
+                                      hash_type)
+                    used_idx[cur_idx] += 1
 
-                        # worker_layer_dims = [num_f, hls, len(cur_idx)]
-                        # with tf.device(gpu):
-                        #    tf.keras.backend.clear_session()
-                        #    model = SparseNeuralNetwork(worker_layer_dims)
-                        # layer_shapes, layer_sizes = get_model_architecture(model)
+                    # worker_layer_dims = [num_f, hls, len(cur_idx)]
+                    # with tf.device(gpu):
+                    #    tf.keras.backend.clear_session()
+                    #    model = SparseNeuralNetwork(worker_layer_dims)
+                    # layer_shapes, layer_sizes = get_model_architecture(model)
 
-                        # set new sub-model
-                        w, b = get_sub_model(full_model, cur_idx, start_idx_b, num_f, hls)
-                        sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
-                        new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
-                        model.set_weights(new_weights)
+                    # set new sub-model
+                    w, b = get_sub_model(full_model, cur_idx, start_idx_b, num_f, hls)
+                    sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
+                    new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
+                    model.set_weights(new_weights)
 
-                    lsh_time = time.time()-lsh_init_time
-                else:
-                    lsh_time = 0
+                lsh_time = time.time()-lsh_init_time
+            else:
+                lsh_time = 0
+            '''
+            lsh_time = 0
 
-                # compute training step
-                loss_value, y_pred = train_step(model, x_batch_train, y_batch_train)
-                # print(tf.config.experimental.get_memory_info('GPU:0'))
+            get_memory(fname)
+            y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
+            get_memory(fname)
 
-                # compute accuracy for the minibatch (top 1 and 5) & store accuracy and loss values
-                rec_init = time.time()
-                acc1 = compute_accuracy_lsh(y_batch_train, y_pred, cur_idx, topk=1)
-                losses.update(loss_value.numpy(), batch)
-                top1.update(acc1, batch)
-                record_time = time.time() - rec_init
+            # compute training step
+            # loss_value, y_pred = train_step(model, x_batch_train, y_batch_train)
+            with tf.GradientTape() as tape:
+                y_pred = model(x_batch_train, training=True)
+                get_memory(fname)
+                loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+                get_memory(fname)
+            grads = tape.gradient(loss_value, model.trainable_weights)
+            get_memory(fname)
+            optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
-                comp_time = (time.time() - init_time) - (lsh_time + record_time)
+            # compute accuracy for the minibatch (top 1 and 5) & store accuracy and loss values
+            rec_init = time.time()
+            acc1 = compute_accuracy_lsh(y_batch_train, y_pred, cur_idx, topk=1)
 
-                # communication happens here
-                if lsh:
-                    full_model, comm_time = communicator.communicate(model, full_model, cur_idx, start_idx_b,
-                                                                     layer_shapes, layer_sizes)
-                else:
-                    comm_time = communicator.communicate(model)
-                    full_model = flatten_weights(model.get_weights())
+            # USE THIS INSTEAD OF ABOVE IN FUTURE
+            tf.keras.metrics.TopKCategoricalAccuracy(
+                k=5, name='top_k_categorical_accuracy', dtype=None
+            )
 
-                total_batches += batch
-                # Log every 10 iterations
-                if step % 50 == 0:
-                    print(
-                        "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Accuracy %.4f, [%d Total Samples]" % (
-                        rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
-                    )
+            losses.update(loss_value.numpy(), batch)
+            top1.update(acc1, batch)
+            record_time = time.time() - rec_init
 
-                # check test accuracy every 100 iterations
-                #'''
-                if step % 100 == 0:  # or step == 50:
-                    if rank == 0:
-                        # top1_test = AverageMeter()
-                        t = time.time()
-                        global_model.set_weights(unflatten_weights(full_model, global_layer_shapes, global_layer_sizes))
-                        for step, (x_batch_test, y_batch_test) in enumerate(test_data):
-                            test_step(global_model, x_batch_test, y_batch_test)
-                            #acc = test_step(x_batch_test, y_batch_test, global_model, np.arange(num_l))
-                            #top1_test.update(acc, x_batch_test.get_shape()[0])
-                        #test_acc = top1_test.avg
-                        # put back original model after computing accuracy
-                        #tf.keras.backend.clear_session()
-                        #worker_layer_dims = [num_f, hls, len(cur_idx)]
-                        #with tf.device(gpu):
-                        #model = SparseNeuralNetwork(worker_layer_dims)
-                        #layer_shapes, layer_sizes = get_model_architecture(model)
-                        # set new sub-model
-                        #w, b = get_sub_model(full_model, cur_idx, start_idx_b, num_f, hls)
-                        #sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
-                        #new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
-                        #model.set_weights(new_weights)
-                        # print(tf.config.experimental.get_memory_info('GPU:0'))
-                        #print("Test Accuracy Top 1: %.4f In %f seconds" % (test_acc, time.time()-t))
-                        test_acc = acc_metric.result().numpy()
-                        print("Test Accuracy Top 1: %.4f In %f seconds" % (float(test_acc),
-                                                                           time.time()-t))
-                        acc_metric.reset_state()
-                #'''
+            comp_time = (time.time() - init_time) - (lsh_time + record_time)
 
-                # update learning rate
-                # lr = lr_schedule(total_steps, lr)
+            # communication happens here
+            '''
+            if lsh:
+                full_model, comm_time = communicator.communicate(model, full_model, cur_idx, start_idx_b,
+                                                                 layer_shapes, layer_sizes)
+            else:
+                comm_time = communicator.communicate(model)
+                full_model = flatten_weights(model.get_weights())
+            '''
+            comm_time = 0
 
-                MPI.COMM_WORLD.Barrier()
-                recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc,
-                                 loss_value.numpy(), top1.avg, losses.avg)
-                # Save data to output folder
-                recorder.save_to_file()
-                test_acc = np.NaN
+            total_batches += batch
+            # Log every 10 iterations
+            if step % 10 == 0:
+                print(
+                    "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Accuracy %.4f, [%d Total Samples]" % (
+                    rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
+                )
 
+            MPI.COMM_WORLD.Barrier()
+            recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc,
+                             loss_value.numpy(), top1.avg, losses.avg)
+            # Save data to output folder
+            recorder.save_to_file()
+            test_acc = np.NaN
 
         # reset accuracy statistics for next epoch
         top1.reset()
         losses.reset()
-
-        '''
-        if rank == 0:
-            with tf.device(cpu):
-                worker_layer_dims = [num_f, hls, num_l]
-                model = SparseNeuralNetwork(worker_layer_dims)
-                layer_shapes, layer_sizes = get_model_architecture(model)
-                # set new sub-model
-                w, b = get_sub_model(full_model, np.arange(num_l), start_idx_b, num_f, hls)
-                sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
-                new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
-                model.set_weights(new_weights)
-                for step, (x_batch_test, y_batch_test) in enumerate(test_data):
-                    test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
-                print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
-        '''
-
-    # Run a test loop at the end of training
-    print('Testing Model...')
-    with tf.device(cpu):
-        for step, (x_batch_test, y_batch_test) in enumerate(test_data):
-            test_step(x_batch_test, tf.sparse.to_dense(y_batch_test), None)
-        print("Test Accuracy Top 1: %.4f" % (float(acc_metric.result().numpy()),))
 
     return full_model, used_idx, recorder.get_saveFolder()

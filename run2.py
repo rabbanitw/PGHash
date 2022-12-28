@@ -90,6 +90,7 @@ if __name__ == '__main__':
     layer_shapes, layer_sizes = get_model_architecture(model)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+    # optimizer = tf.keras.optimizers.legacy.SGD(learning_rate=args.lr)
 
     if lsh:
         partial_model = flatten_weights(model.get_weights())

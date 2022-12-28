@@ -88,6 +88,10 @@ def train(rank, model, optimizer, train_data, test_data, num_f, num_l, args):
     def softmax_cross_entropy_with_logits(logits, labels, dim=-1):
         return (-labels * torch.nn.functional.log_softmax(logits, dim=dim)).sum(dim=dim)
 
+    def BCEwithLogits():
+        loss = 0
+        return loss
+
     # hashing parameters
     sdim = args.sdim
     num_tables = args.num_tables
@@ -112,8 +116,8 @@ def train(rank, model, optimizer, train_data, test_data, num_f, num_l, args):
     if os.path.exists(fname):
         os.remove(fname)
 
-    model = NeuralNetwork(num_f, hls, num_l)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    # model = NeuralNetwork(num_f, hls, num_l)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = torch.nn.BCEWithLogitsLoss(reduction='sum')
     model.train(True)
 
@@ -137,7 +141,8 @@ def train(rank, model, optimizer, train_data, test_data, num_f, num_l, args):
 
             # Compute the loss and its gradients
             y_true = y_batch_train.to_dense()
-            loss = torch.mean(softmax_cross_entropy_with_logits(outputs, y_true))
+            # loss = torch.mean(softmax_cross_entropy_with_logits(outputs, y_true))
+            loss = criterion(outputs, y_true)
 
             get_memory(fname)
             # Adjust learning weights

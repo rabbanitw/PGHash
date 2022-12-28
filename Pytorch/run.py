@@ -17,7 +17,21 @@ cudnn.benchmark = True
 
 
 def softmax_cross_entropy_with_logits(logits, labels, dim=-1):
-    return (-labels * torch.nn.functional.log_softmax(logits, dim=dim)).sum(dim=dim)
+    return -(labels * torch.nn.functional.log_softmax(logits, dim=dim)).sum(dim=dim)
+
+
+class SoftmaxCELogits(torch.nn.Module):
+    """
+    Softmax Cross Entropy with Logits
+    """
+
+    def __init__(self):
+        super(SoftmaxCELogits, self).__init__()
+
+    def forward(self, logits, labels, dim=-1):
+        losses = -torch.sum(labels * torch.nn.functional.log_softmax(logits, dim=dim))
+        # losses = -torch.sum(torch.mul(labels, torch.nn.LogSoftmax()(logits)), dim=dim)
+        return losses
 
 
 if __name__ == '__main__':
@@ -52,7 +66,7 @@ if __name__ == '__main__':
     np.random.seed(randomSeed)
 
 
-    torch.set_default_dtype(torch.float64)
+    torch.set_default_dtype(torch.float32)
 
     # hashing parameters
     sdim = args.sdim
@@ -76,7 +90,7 @@ if __name__ == '__main__':
     test_data_path = '../Data/' + args.dataset + '/test.txt'
 
     print('Loading and partitioning data...')
-    train_data, tf_data, n_features, n_labels = load_extreme_data(rank, size, batch_size, train_data_path, test_data_path)
+    # train_data, tf_data, n_features, n_labels = load_extreme_data(rank, size, batch_size, train_data_path, test_data_path)
     test_data = None
 
     print('Initializing model...')
@@ -95,11 +109,17 @@ if __name__ == '__main__':
     else:
         worker_layer_dims = [n_features, hls, n_labels]
     '''
+    # n_features = 10
+    # n_labels = 5
+    # hls = 10
+
     n_features = 782585
     n_labels = 205443
 
     torch_model = NeuralNetwork(n_features, hls, n_labels)
-    optimizer = torch.optim.Adam(torch_model.parameters(), lr=args.lr)
+    learning_rate = args.lr/100
+    optimizer = torch.optim.SGD(torch_model.parameters(), lr=learning_rate)
+    # optimizer = torch.optim.Adam(torch_model.parameters(), lr=args.lr)
 
     # initialize D-SGD or Centralized SGD
     # communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
@@ -110,25 +130,34 @@ if __name__ == '__main__':
     # print(model)
 
     MPI.COMM_WORLD.Barrier()
-    #print('Beginning training...')
-    #full_model, used_indices, saveFolder = train(rank, model, optimizer, train_data, test_data, n_features,
+    # print('Beginning training...')
+    #full_model, used_indices, saveFolder = train(rank, torch_model, optimizer, train_data, test_data, n_features,
     #                                          n_labels, args)
 
 
     # ======== TEST =========
+    # '''
+    X = np.random.rand(batch_size, n_features)
+    Y = np.random.rand(batch_size, n_labels)
+
+    tensor_x = torch.Tensor(X)  # transform to torch tensor
+    tensor_y = torch.Tensor(Y)
+
+    my_dataset = torch.utils.data.TensorDataset(tensor_x, tensor_y)  # create your datset
+    train_data = torch.utils.data.DataLoader(my_dataset, batch_size=batch_size)  # create your dataloader
+
+    tf_data = tf.data.Dataset.from_tensor_slices((X, Y)).batch(batch_size)
+    
 
     worker_layer_dims = [n_features, hls, n_labels]
 
     model2 = SparseNeuralNetwork(worker_layer_dims)
 
 
-    w1 = torch_model.layer[0].weight.detach().numpy()
-    b1 = torch_model.layer[0].bias.detach().numpy()
-    w2 = torch_model.layer[2].weight.detach().numpy()
-    b2 = torch_model.layer[2].bias.detach().numpy()
-
-    # summary(torch_model, (32, n_features))
-
+    w1 = torch_model.layer1.weight.detach().numpy()
+    b1 = torch_model.layer1.bias.detach().numpy()
+    w2 = torch_model.layer2.weight.detach().numpy()
+    b2 = torch_model.layer2.bias.detach().numpy()
 
     weights = model2.get_weights()
     weights[0] = w1.T
@@ -137,36 +166,59 @@ if __name__ == '__main__':
     weights[3] = b2
     model2.set_weights(weights)
 
-    X = torch.rand(32, n_features)
+    w1_torch = torch_model.layer1.weight.detach().numpy().T
+    weights = model2.get_weights()
+    w1_tf = weights[0]
+    print('Diff in First Layer Weights (Start)')
+    print(np.linalg.norm(w1_tf-w1_torch))
+
+    X = torch.rand(32, n_features)*10
 
     X2 = tf.convert_to_tensor(X.numpy())
-
-    print(type(X))
 
     pred_torch = torch_model(X).detach().numpy()
 
     pred_tf = model2(X2).numpy()
 
 
-    print(np.linalg.norm(pred_tf-pred_torch))
+    print(np.linalg.norm(pred_tf-pred_torch)/np.linalg.norm(pred_tf))
 
     # for step, (x_batch_train, y_batch_train) in enumerate(train_data):
     (x_batch_train, y_batch_train) = next(iter(train_data))
     (x_batch_train2, y_batch_train2) = next(iter(tf_data))
 
-
-
+    #print(y_batch_train)
+    #y_batch_train = y_batch_train / torch.sum(y_batch_train)
+    #print(y_batch_train)
     #### TRAIN COMPARISON
 
-    # optimizer = torch.optim.Adam(torch_model.parameters(), lr=args.lr)
+    # optimizer = torch.optim.Adam(torch_model.parameters(), lr=args.lr, eps=1e-7)
     optimizer = torch.optim.SGD(torch_model.parameters(), lr=args.lr)
-    criterion = torch.nn.BCEWithLogitsLoss(reduction='sum')
+    # criterion = torch.nn.BCEWithLogitsLoss(reduction='sum')
+    criterion = torch.nn.BCEWithLogitsLoss()
+    # criterion = torch.nn.CrossEntropyLoss()
+    # criterion = SoftmaxCELogits()
     torch_model.train(True)
 
     outputs = torch_model(x_batch_train)
+    # outputs = torch.nn.Softmax()(outputs)
     # Compute the loss and its gradients
-    loss = torch.mean(softmax_cross_entropy_with_logits(outputs, y_batch_train))
+    # loss = torch.mean(softmax_cross_entropy_with_logits(outputs, y_batch_train))
+
+    np_outputs = outputs.detach().numpy()
+    np_label = y_batch_train.detach().numpy()
+    tf_outputs = tf.convert_to_tensor(np_outputs)
+    tf_label = tf.convert_to_tensor(np_label)
+    tf_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=tf_label, logits=tf_outputs))
+    print(tf_loss)
+    loss = torch.tensor(tf_loss.numpy(), requires_grad=True)
+
+
+    # loss = criterion(outputs, y_batch_train)
+    # loss = torch.nn.functional.cross_entropy(outputs, y_batch_train)
     loss.backward()
+    # print(torch_model.layer1.weight.grad)
+    # print(torch_model.layer1.bias.grad)
     optimizer.step()
     optimizer.zero_grad()
 
@@ -174,20 +226,43 @@ if __name__ == '__main__':
 
     # optimizer2 = tf.keras.optimizers.Adam(learning_rate=args.lr)
     optimizer2 = tf.keras.optimizers.legacy.SGD(learning_rate=args.lr)
+    # y_true = y_batch_train2 / tf.math.reduce_sum(y_batch_train2)
+    y_true = y_batch_train2
+
     with tf.GradientTape() as tape:
         y_pred = model2(x_batch_train2, training=True)
-        loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_batch_train2, logits=y_pred))
+        loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+        # loss_value = lossF(y_batch_train2, y_pred)
     grads = tape.gradient(loss_value, model2.trainable_weights)
+    # loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_batch_train2, logits=y_pred))
+
+    
+    #for var, g in zip(model2.trainable_variables, grads):
+    #    # in this loop g is the gradient of each layer
+    #    print(f'{var.name}, shape: {g.shape}')
+    #    print("gradients..")
+    #    print(tf.reduce_max(g))
+    
+
     optimizer2.apply_gradients(zip(grads, model2.trainable_weights))
 
     print(loss_value)
 
+    w1_torch = torch_model.layer1.weight.detach().numpy().T
+    weights = model2.get_weights()
+    w1_tf = weights[0]
+
+    print('Diff in First Layer Weights (End)')
+    print(np.linalg.norm(w1_tf - w1_torch))
+
     new_pred_torch = torch_model(X).detach().numpy()
     new_pred_tf = model2(X2).numpy()
-    print(np.linalg.norm(pred_torch - new_pred_torch))
-    print(np.linalg.norm(pred_tf - new_pred_tf))
+    # print(np.linalg.norm(pred_torch - new_pred_torch))
+    # print(np.linalg.norm(pred_tf - new_pred_tf))
 
-    print(np.linalg.norm(new_pred_tf-new_pred_torch))
+    print(np.linalg.norm(new_pred_tf-new_pred_torch)/np.linalg.norm(new_pred_tf))
+
+    # '''
 
 
 

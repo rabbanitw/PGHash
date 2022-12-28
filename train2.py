@@ -45,7 +45,7 @@ def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
 def train(rank, model, optimizer, communicator, train_data, test_data, full_model,
           num_f, num_l, args, acc_metric=tf.keras.metrics.TopKCategoricalAccuracy(k=1)):
 
-    @tf.function
+    # @tf.function
     def train_step(x, y):
         # y = tf.gather(tf.sparse.to_dense(y), idx, axis=1)
         with tf.GradientTape() as tape:
@@ -53,7 +53,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_pred))
         grads = tape.gradient(loss_value, model.trainable_weights)
         optimizer.apply_gradients(zip(grads, model.trainable_weights))
-        return loss_value
+        return loss_value, y_pred
 
     # @tf.function
     def test_step(x, y, cur_idx):
@@ -152,7 +152,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             get_memory(fname)
             y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
 
-            # '''
+            '''
             get_memory(fname)
             with tf.GradientTape() as tape:
                 y_pred = model(x_batch_train, training=True)
@@ -169,10 +169,11 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
                 f.write('==========\n')
 
             '''
-            batch, s = x_batch_train.get_shape()
+            # '''
+            # batch, s = x_batch_train.get_shape()
             lsh_time = 0
-            loss_value, y_pred = train_step(x_batch_train, y_batch_train, cur_idx)
-            '''
+            loss_value, y_pred = train_step(x_batch_train, y_true)
+            # '''
 
             
             # compute accuracy for the minibatch (top 1) & store accuracy and loss values
