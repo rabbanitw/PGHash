@@ -7,15 +7,13 @@
 #SBATCH --account=scavenger    # set QOS, this will determine what resources can be requested
 #SBATCH --qos=scavenger    # set QOS, this will determine what resources can be requested
 #SBATCH --partition=scavenger
-#SBATCH --ntasks=8
+#SBATCH --ntasks=1
 #SBATCH --mem 128gb         # memory required by job; if unit is not specified MB will be assumed
 #SBATCH --nice=0
 #SBATCH --mail-type=END   # Valid type values are NONE, BEGIN, END, FAIL, REQUEUE
 
 module load mpi
-# module load cuda/11.4.4
-# module load cudnn/v8.2.1
 
-mpirun -np 1 python run.py --dataset Delicious200K
+mpirun -np 1 python runPGnoLSH.py --dataset Delicious200K
 
 # --mca btl_openib_warn_no_device_params_found 0 --mca orte_base_help_aggregate 0 --mca btl ^openib ...

@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import argparse
 from dataloader import load_extreme_data
-from train2 import train
+from train import train
 from network import Graph
 from communicators import CentralizedSGD, LSHCentralizedSGD
 from mlp import SparseNeuralNetwork
@@ -16,8 +16,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     # Add an argument
-    parser.add_argument('--name', type=str, default='Test')
-    parser.add_argument('--dataset', type=str, default='Amazon670K')
+    parser.add_argument('--dataset', type=str, default='Amazon670k')
     parser.add_argument('--graph_type', type=str, default='ring')
     parser.add_argument('--hash_type', type=str, default='slide_vanilla')
     parser.add_argument('--randomSeed', type=int, default=1203)
@@ -76,10 +75,9 @@ if __name__ == '__main__':
     final_dense_shape = initial_final_dense.T.shape
     num_c_layers = int(cr*n_labels)
 
-    lsh = False
-
     if lsh:
         worker_layer_dims = [n_features, hls, num_c_layers]
+
     else:
         worker_layer_dims = [n_features, hls, n_labels]
 
@@ -90,7 +88,6 @@ if __name__ == '__main__':
     layer_shapes, layer_sizes = get_model_architecture(model)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-    # optimizer = tf.keras.optimizers.legacy.SGD(learning_rate=args.lr)
 
     if lsh:
         partial_model = flatten_weights(model.get_weights())
@@ -113,10 +110,14 @@ if __name__ == '__main__':
 
     print('Beginning training...')
     full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data,
-                                                full_model, n_features, n_labels, args)
+                                                full_model, epochs, sdim, num_tables, n_features, n_labels, hls, cr,
+                                                 lsh, hash_type, steps_per_lsh)
 
     recv_indices = None
     if rank == 0:
         recv_indices = np.empty_like(used_indices)
     MPI.COMM_WORLD.Reduce(used_indices, recv_indices, op=MPI.SUM, root=0)
 
+    if rank == 0:
+        np.save(saveFolder+'/global_weight_frequency.npy', recv_indices)
+        np.save(saveFolder + '/final_global_model.npy', full_model)
