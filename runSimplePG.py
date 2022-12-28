@@ -55,8 +55,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
         y_true = np.zeros((batch_size, full_labels))
         for i in true_idx:
             y_true[i[0], i[1]] = 1
-        y_true_sub = tf.convert_to_tensor(y_true[:, used_idx], dtype=tf.float32)
-        return y_true_sub, tf.convert_to_tensor(y_true, dtype=tf.float32)
+        return tf.convert_to_tensor(y_true[:, used_idx], dtype=tf.float32)
 
     def get_memory(filename):
         mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -77,6 +76,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
     hls = args.hidden_layer_size
 
     top1 = AverageMeter()
+    test_top1 = AverageMeter()
     losses = AverageMeter()
     recorder = Recorder('Output', args.name, MPI.COMM_WORLD.Get_size(), rank, hash_type)
     total_batches = 0
@@ -116,7 +116,7 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             init_time = time.time()
 
             batch = x_batch_train.get_shape()[0]
-            y_true, y_true_full = get_partial_label(y_batch_train, cur_idx, batch, num_l)
+            y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
             loss_value, y_pred = train_step(x_batch_train, y_true)
 
             comm_time = 0
@@ -124,12 +124,11 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             # communication happens here
             # comm_time = communicator.communicate(model)
 
-            get_memory(fname)
-
             # compute accuracy for the minibatch (top 1) & store accuracy and loss values
             rec_init = time.time()
             losses.update(np.array(loss_value), batch)
-            acc1 = compute_accuracy_lsh(y_pred, y_batch_train, cur_idx)
+
+            acc1 = compute_accuracy_lsh(y_pred, y_batch_train, cur_idx, num_l)
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
             comp_time = (time.time() - init_time) - (lsh_time + record_time)
@@ -144,9 +143,21 @@ def train(rank, model, optimizer, communicator, train_data, test_data, full_mode
             # Log every 200 batches.
             if step % 10 == 0:
                 print(
-                    "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Accuracy %.4f, [%d Total Samples]"
+                    "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
                     % (rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
                 )
+
+            if step % 20 == 0:
+                if rank == 0:
+                    for (x_batch_test, y_batch_test) in test_data:
+                        test_batch = x_batch_test.get_shape()[0]
+                        y_pred_test = model(x_batch_test, training=False)
+                        test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, cur_idx, num_l)
+                        test_top1.update(test_acc1, test_batch)
+                    test_acc = test_top1.avg
+                    print("(Rank %d) Step %d: Top 1 Test Accuracy %.4f" % (rank, step, test_acc))
+                    recorder.add_testacc(test_acc)
+                    test_top1.reset()
 
         # reset accuracy statistics for next epoch
         top1.reset()
@@ -168,7 +179,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_tables', type=int, default=50)
     parser.add_argument('--lr', type=int, default=1e-3)
     parser.add_argument('--cr', type=float, default=0.1)
-    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--train_bs', type=int, default=32)
+    parser.add_argument('--test_bs', type=int, default=8192)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
     parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
@@ -200,14 +212,15 @@ if __name__ == '__main__':
     # G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
     # training parameters
-    batch_size = args.batch_size
+    train_bs = args.train_bs
+    test_bs = args.test_bs
     epochs = args.epochs
     hls = args.hidden_layer_size
     train_data_path = 'Data/' + args.dataset + '/train.txt'
     test_data_path = 'Data/' + args.dataset + '/test.txt'
 
     print('Loading and partitioning data...')
-    train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size,
+    train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, train_bs, test_bs,
                                                                     train_data_path, test_data_path)
 
     print('Initializing model...')
@@ -224,7 +237,6 @@ if __name__ == '__main__':
     layer_shapes, layer_sizes = get_model_architecture(model)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-    # optimizer = tf.keras.optimizers.legacy.SGD(learning_rate=args.lr)
 
     # initialize D-SGD or Centralized SGD
     # communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)

@@ -3,17 +3,17 @@ import numpy as np
 import os
 
 
-def compute_accuracy_lsh(y_pred, y_true, lsh_idx, topk=1):
+def compute_accuracy_lsh(y_pred, y_true, lsh_idx, num_l, topk=1):
     # result_idx = find_topk(y_pred.numpy(), topk)
     val, result_idx = tf.math.top_k(y_pred, k=topk)
     batches = y_pred.get_shape()[0]
     true_idx = y_true.indices.numpy()
+    true_idx_vals = true_idx[:, 0]*num_l + true_idx[:, 1]
     count = 0
-    for i in range(batches):
-        for j in range(topk):
-            transform_idx_y = lsh_idx[result_idx[i, j]]
-            top_idx = np.array([i, transform_idx_y])
-            count += int(np.any(np.all(top_idx == true_idx, axis=1)))
+    for i in range(topk):
+        pre_transform_y = result_idx[0:batches, i]
+        pred_idx_vals = lsh_idx[pre_transform_y] + np.arange(batches) * num_l
+        count += len(np.intersect1d(true_idx_vals, pred_idx_vals, assume_unique=True))
     return count/(batches*topk)
 
 
@@ -79,6 +79,9 @@ class Recorder(object):
         self.record_avg_training_acc1.append(avg_acc1)
         self.record_avg_losses.append(avg_losses)
 
+    def add_testacc(self, test_acc):
+        self.record_test_acc1.append(test_acc)
+
     def save_to_file(self):
         np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-epoch-time.log', self.record_epoch_times,
                    delimiter=',')
@@ -103,6 +106,20 @@ class Recorder(object):
         #    f.write(self.args.description + '\n')
 
 '''
+
+def compute_accuracy_lshOLD(y_pred, y_true, lsh_idx, topk=1):
+    # result_idx = find_topk(y_pred.numpy(), topk)
+    val, result_idx = tf.math.top_k(y_pred, k=topk)
+    batches = y_pred.get_shape()[0]
+    true_idx = y_true.indices.numpy()
+    count = 0
+    for i in range(batches):
+        for j in range(topk):
+            transform_idx_y = lsh_idx[result_idx[i, j]]
+            top_idx = np.array([i, transform_idx_y])
+            count += int(np.any(np.all(top_idx == true_idx, axis=1)))
+    return count/(batches*topk)
+
 def compute_accuracy(y_true, y_pred, lsh_idx, topk=1):
     # if numpy:
     #    batches, c = y_pred.shape

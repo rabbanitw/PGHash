@@ -9,7 +9,7 @@ def convert_sparse_matrix_to_sparse_tensor(X):
     return tf.sparse.reorder(tf.SparseTensor(indices, coo.data, coo.shape))
 
 
-def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
+def load_extreme_data(rank, size, train_bs, test_bs, train_data_path, test_data_path):
     # load data
     features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
     features_t, labels_t, num_labels_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
@@ -27,8 +27,8 @@ def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
     tst_labels = convert_sparse_matrix_to_sparse_tensor(worker_labels_t)
 
     # Create train and test datasets
-    trn_dataset = tf.data.Dataset.from_tensor_slices((trn, trn_labels)).batch(batch_size)
-    tst_dataset = tf.data.Dataset.from_tensor_slices((tst, tst_labels)).batch(512)
+    trn_dataset = tf.data.Dataset.from_tensor_slices((trn, trn_labels)).batch(train_bs)
+    tst_dataset = tf.data.Dataset.from_tensor_slices((tst, tst_labels)).batch(test_bs)
     return trn_dataset, tst_dataset, num_features, num_labels
 
 
