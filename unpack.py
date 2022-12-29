@@ -77,6 +77,20 @@ class PGHash:
     def get_partial_model(self):
         return self.unflatten_weights(self.full_model[:self.weight_idx])
 
+    def flatten_weights(self, weight_list):
+        return np.concatenate(list(weight_list[i].flatten() for i in range(len(weight_list))))
+
+    def unflatten_weights(self, flat_weights):
+        unflatten_model = []
+        start_idx = 0
+        end_idx = 0
+        for i in range(len(self.layer_shapes)):
+            layer_size = self.layer_sizes[i]
+            end_idx += layer_size
+            unflatten_model.append(flat_weights[start_idx:end_idx].reshape(self.layer_shapes[i]))
+            start_idx += layer_size
+        return unflatten_model
+
     def run_lsh(self, data):
 
         self.get_final_dense()
@@ -105,7 +119,7 @@ class PGHash:
         return self.ci
 
     def get_new_model(self):
-
+        # move back to the top now that we need to reset full model
         worker_layer_dims = [self.nf, self.hls, len(self.ci)]
         self.model = SparseNeuralNetwork(worker_layer_dims)
         self.layer_shapes, self.layer_sizes = self.get_model_architecture()
@@ -131,18 +145,5 @@ class PGHash:
             y_pred_test = self.model(x_batch_test, training=False)
             test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
             acc_meter.update(test_acc1, test_batch)
+        self.get_new_model()
         return acc_meter.avg
-
-    def flatten_weights(self, weight_list):
-        return np.concatenate(list(weight_list[i].flatten() for i in range(len(weight_list))))
-
-    def unflatten_weights(self, flat_weights):
-        unflatten_model = []
-        start_idx = 0
-        end_idx = 0
-        for i in range(len(self.layer_shapes)):
-            layer_size = self.layer_sizes[i]
-            end_idx += layer_size
-            unflatten_model.append(flat_weights[start_idx:end_idx].reshape(self.layer_shapes[i]))
-            start_idx += layer_size
-        return unflatten_model
