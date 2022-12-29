@@ -5,7 +5,8 @@ from dataloader import load_extreme_data
 from communicators import CentralizedSGD
 from mpi4py import MPI
 from misc import AverageMeter, Recorder, compute_accuracy_lsh
-from unpack import LSH
+from unpack import PGHash
+from mlp import SparseNeuralNetwork
 import time
 import resource
 import os
@@ -13,7 +14,7 @@ import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
-def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels, args):
+def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labels, args):
 
     def train_step(x, y):
         with tf.GradientTape() as tape:
@@ -64,9 +65,9 @@ def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels,
 
             if step == 0:
                 # compute LSH
-                cur_idx = LSH.run_lsh(x_batch_train)
+                cur_idx = PGHash.run_lsh(x_batch_train)
                 # get new model
-                model = LSH.get_new_model()
+                model = PGHash.get_new_model()
 
             get_memory(fname)
 
@@ -112,7 +113,10 @@ def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels,
                         test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, cur_idx, num_labels)
                         test_top1.update(test_acc1, test_batch)
                     test_acc = test_top1.avg
-                    print("(Rank %d) Step %d: Top 1 Test Accuracy %.4f" % (rank, step, test_acc))
+                    '''
+                    test_acc = PGHash.test_full_model(test_data, test_top1)
+                    '''
+                    print("Step %d: Top 1 Test Accuracy %.4f" % (step, test_acc))
                     recorder.add_testacc(test_acc)
                     test_top1.reset()
 
@@ -183,16 +187,16 @@ if __name__ == '__main__':
     print('Initializing model...')
 
     # initialize model
-    LSH = LSH(n_labels, n_features, hls, sdim, num_tables, cr, hash_type)
+    PGHash = PGHash(n_labels, n_features, hls, sdim, num_tables, cr, hash_type)
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-    layer_shapes, layer_sizes = LSH.get_model_architecture()
+    layer_shapes, layer_sizes = PGHash.get_model_architecture()
 
     # initialize D-SGD or Centralized SGD
     # communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
     communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
 
     print('Beginning training...')
-    saveFolder = train(rank, LSH, optimizer, communicator, train_data, test_data, n_labels, args)
+    saveFolder = train(rank, PGHash, optimizer, communicator, train_data, test_data, n_labels, args)
 
     # recv_indices = None
     # if rank == 0:

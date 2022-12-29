@@ -2,9 +2,10 @@ import numpy as np
 import tensorflow as tf
 from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 from mlp import SparseNeuralNetwork
+from misc import compute_accuracy_lsh
 
 
-class LSH:
+class PGHash:
 
     def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type):
 
@@ -19,11 +20,16 @@ class LSH:
         self.num_c_layers = int(self.cr * self.nl)
         self.ci = np.arange(self.num_c_layers)
         self.final_dense = None
+        self.full_layer_shapes = None
+        self.full_layer_sizes = None
         self.weight_idx = (self.nf * self.hls) + self.hls + (4 * self.hls)
         self.full_idx = [range((self.weight_idx + i * self.hls), (self.weight_idx + i * self.hls + self.hls))
                          for i in self.ci]
 
         # initialize model
+        self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
+        self.full_layer_shapes, self.full_layer_sizes = self.get_model_architecture()
+
         worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
         self.model = SparseNeuralNetwork(worker_layer_dims)
         self.layer_shapes, self.layer_sizes = self.get_model_architecture()
@@ -116,6 +122,43 @@ class LSH:
         self.model.set_weights(new_weights)
         return self.model
 
+    def test_full_model(self, test_data, acc_meter):
+        for (x_batch_test, y_batch_test) in test_data:
+            test_batch = x_batch_test.get_shape()[0]
+            y_pred_test = self.model(x_batch_test, training=False)
+            test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, self.ci, self.nl)
+            acc_meter.update(test_acc1, test_batch)
+        '''
+        worker_layer_dims = [self.nf, self.hls, self.nl]
+        fm = SparseNeuralNetwork(worker_layer_dims)
+        print('hey')
+        print(fm.summary())
+
+        unflatten_model = []
+        start_idx = 0
+        end_idx = 0
+        for i in range(len(self.full_layer_shapes)):
+            layer_size = self.full_layer_sizes[i]
+            end_idx += layer_size
+            unflatten_model.append(self.full_model[start_idx:end_idx].reshape(self.full_layer_shapes[i]))
+            start_idx += layer_size
+
+        # new_weights = self.unflatten_weights(self.full_model)
+        fm.set_weights(unflatten_model)
+        print('hi')
+        label_idx = np.arange(self.nl)
+        for (x_batch_test, y_batch_test) in test_data:
+            test_batch = x_batch_test.get_shape()[0]
+            print('hi')
+            y_pred_test = fm(x_batch_test, training=False)
+            print('hi')
+            test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
+            acc_meter.update(test_acc1, test_batch)
+        print('h0')
+        return acc_meter.avg
+        '''
+        return acc_meter.avg
+
     def flatten_weights(self, weight_list):
         return np.concatenate(list(weight_list[i].flatten() for i in range(len(weight_list))))
 
@@ -129,6 +172,3 @@ class LSH:
             unflatten_model.append(flat_weights[start_idx:end_idx].reshape(self.layer_shapes[i]))
             start_idx += layer_size
         return unflatten_model
-
-
-
