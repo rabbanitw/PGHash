@@ -27,9 +27,6 @@ class PGHash:
                          for i in self.ci]
 
         # initialize model
-        self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
-        self.full_layer_shapes, self.full_layer_sizes = self.get_model_architecture()
-
         worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
         self.model = SparseNeuralNetwork(worker_layer_dims)
         self.layer_shapes, self.layer_sizes = self.get_model_architecture()
@@ -124,22 +121,14 @@ class PGHash:
 
     def test_full_model(self, test_data, acc_meter):
 
-        worker_layer_dims = [self.nf, self.hls, self.nl]
-        fm = SparseNeuralNetwork(worker_layer_dims)
-        # add in full model
-        unflatten_model = []
-        start_idx = 0
-        end_idx = 0
-        for i in range(len(self.full_layer_shapes)):
-            layer_size = self.full_layer_sizes[i]
-            end_idx += layer_size
-            unflatten_model.append(self.full_model[start_idx:end_idx].reshape(self.full_layer_shapes[i]))
-            start_idx += layer_size
-        fm.set_weights(unflatten_model)
+        self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
+        self.layer_shapes, self.layer_sizes = self.get_model_architecture()
+        unflatten_model = self.unflatten_weights(self.full_model)
+        self.model.set_weights(unflatten_model)
         label_idx = np.arange(self.nl)
         for (x_batch_test, y_batch_test) in test_data:
             test_batch = x_batch_test.get_shape()[0]
-            y_pred_test = fm(x_batch_test, training=False)
+            y_pred_test = self.model(x_batch_test, training=False)
             test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
             acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg

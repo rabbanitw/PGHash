@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import argparse
 from dataloader import load_extreme_data
-from train import train
+from trainOLD import train
 from network import Graph
 from communicators import CentralizedSGD, LSHCentralizedSGD
 from mlp import SparseNeuralNetwork

@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import argparse
 from dataloader import load_extreme_data
-from train import train
+from Old.train import train
 from communicators import CentralizedSGD, LSHCentralizedSGD
 from mlp import SparseNeuralNetwork
 from Old.unpack import get_model_architecture, flatten_weights
