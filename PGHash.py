@@ -1,13 +1,16 @@
 import numpy as np
 import tensorflow as tf
+import time
 from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 from mlp import SparseNeuralNetwork
 from misc import compute_accuracy_lsh
+from mpi4py import MPI
 
 
 class PGHash:
 
-    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type):
+    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
+                 rank, size, influence, i1, i2):
 
         self.nl = num_labels
         self.nf = num_features
@@ -25,6 +28,13 @@ class PGHash:
         self.weight_idx = (self.nf * self.hls) + self.hls + (4 * self.hls)
         self.full_idx = [range((self.weight_idx + i * self.hls), (self.weight_idx + i * self.hls + self.hls))
                          for i in self.ci]
+        self.rank = rank
+        self.size = size
+        self.influence = influence
+        self.i1 = i1
+        self.i2 = i2
+        self.iter = 0
+        self.comm_iter = 0
 
         # initialize model
         worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
@@ -64,9 +74,9 @@ class PGHash:
         self.full_idx = [range((self.weight_idx + i * self.hls), (self.weight_idx + i * self.hls + self.hls))
                          for i in self.ci]
 
-    def update_full_model(self, m):
+    def update_full_model(self, model, returnModel=False):
         # update full model before averaging
-        weights = m.get_weights()
+        weights = model.get_weights()
         w = weights[-2]
         b = weights[-1]
         # Update this in the future to gather the start size and not know based off of fixed network
@@ -75,6 +85,8 @@ class PGHash:
         # update the first part of the model as well!
         partial_model = self.flatten_weights(weights[:-2])
         self.full_model[:self.weight_idx] = partial_model
+        if returnModel:
+            return self.full_model
 
     def get_final_dense(self):
         dense_shape = (self.nl, self.hls)
@@ -125,11 +137,7 @@ class PGHash:
         self.used_idx[self.ci] += 1
         return self.ci
 
-    def get_new_model(self):
-        # move back to the top now that we need to reset full model
-        worker_layer_dims = [self.nf, self.hls, len(self.ci)]
-        self.model = SparseNeuralNetwork(worker_layer_dims)
-        self.layer_shapes, self.layer_sizes = self.get_model_architecture()
+    def update_model(self):
         # get biases
         biases = self.full_model[self.bias_idx]
         # get weights
@@ -138,7 +146,15 @@ class PGHash:
         sub_model = np.concatenate((self.full_model[:self.weight_idx], weights.flatten(), biases.flatten()))
         new_weights = self.unflatten_weights(sub_model)
         self.model.set_weights(new_weights)
-        return self.model
+
+    def get_new_model(self, returnModel=True):
+        # move back to the top now that we need to reset full model
+        worker_layer_dims = [self.nf, self.hls, len(self.ci)]
+        self.model = SparseNeuralNetwork(worker_layer_dims)
+        self.layer_shapes, self.layer_sizes = self.get_model_architecture()
+        self.update_model()
+        if returnModel:
+            return self.model
 
     def test_full_model(self, test_data, acc_meter):
 
@@ -152,5 +168,45 @@ class PGHash:
             y_pred_test = self.model(x_batch_test, training=False)
             test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
             acc_meter.update(test_acc1, test_batch)
-        self.get_new_model()
+        self.get_new_model(returnModel=False)
         return acc_meter.avg
+
+    def average(self, model):
+
+        self.update_full_model(model)
+
+        # create receiving buffer
+        recv_buffer = np.empty_like(self.full_model)
+
+        # perform averaging
+        tic = time.time()
+        MPI.COMM_WORLD.Allreduce(self.influence*self.full_model, recv_buffer, op=MPI.SUM)
+        toc = time.time()
+
+        # update full model
+        self.full_model = recv_buffer
+
+        # set new sub-model
+        self.update_model()
+
+        return self.model, toc - tic
+
+    def communicate(self, model):
+        # Have to have this here because of the case that i1 = 0 (cant do 0 % 0)
+        self.iter += 1
+        comm_time = 0
+        # I1: Number of Local Updates Communication Set
+        if self.iter % (self.i1+1) == 0:
+            self.comm_iter += 1
+            # decentralized averaging according to activated topology
+            model, t = self.average(model)
+            comm_time += t
+            # I2: Number of Consecutive 1-Step Averaging
+            if self.comm_iter % self.i2 == 0:
+                self.comm_iter = 0
+            else:
+                # decrease iteration by one in order to run another one update and average step (I2 communication)
+                self.iter -= 1
+        return model, comm_time
+
+

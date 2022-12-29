@@ -17,6 +17,6 @@ module load mpi
 module load cuda/11.4.4
 source ../../cmlscratch/marcob/environments/pghash/bin/activate
 
-mpirun -np 1 python runSimplePG.py --dataset Delicious200K --test_bs 8192
+mpirun -np 1 python runPG.py --dataset Delicious200K --test_bs 8192
 
 # --mca btl_openib_warn_no_device_params_found 0 --mca orte_base_help_aggregate 0 --mca btl ^openib ...

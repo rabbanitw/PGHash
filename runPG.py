@@ -2,11 +2,9 @@ import tensorflow as tf
 import numpy as np
 import argparse
 from dataloader import load_extreme_data
-from communicators import CentralizedSGD
 from mpi4py import MPI
 from misc import AverageMeter, Recorder, compute_accuracy_lsh
-from unpack import PGHash
-from mlp import SparseNeuralNetwork
+from PGHash import PGHash
 import time
 import resource
 import os
@@ -14,15 +12,7 @@ import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
-def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labels, args):
-
-    def train_step(x, y):
-        with tf.GradientTape() as tape:
-            y_pred = model(x, training=True)
-            loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_pred))
-        grads = tape.gradient(loss_value, model.trainable_weights)
-        optimizer.apply_gradients(zip(grads, model.trainable_weights))
-        return loss_value, y_pred
+def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
 
     def get_partial_label(y_data, used_idx, batch_size, full_labels=num_labels):
         true_idx = y_data.indices.numpy()
@@ -63,6 +53,7 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
+            init_time = time.time()
             if lsh and step % steps_per_lsh == 0:
                 lsh_init = time.time()
                 if step > 0:
@@ -78,8 +69,6 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
 
             get_memory(fname)
 
-            init_time = time.time()
-
             batch = x_batch_train.get_shape()[0]
             y_true = get_partial_label(y_batch_train, cur_idx, batch)
             with tf.GradientTape() as tape:
@@ -88,9 +77,8 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
             grads = tape.gradient(loss_value, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
-            comm_time = 0
             # communication happens here
-            # comm_time = communicator.communicate(model)
+            model, comm_time = PGHash.communicate(model)
 
             # compute accuracy for the minibatch (top 1) & store accuracy and loss values
             rec_init = time.time()
@@ -190,16 +178,16 @@ if __name__ == '__main__':
     print('Initializing model...')
 
     # initialize model
-    PGHash = PGHash(n_labels, n_features, hls, sdim, num_tables, cr, hash_type)
+    PGHash = PGHash(n_labels, n_features, hls, sdim, num_tables, cr, hash_type, rank, size, 1 / size, 0, 1)
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
     layer_shapes, layer_sizes = PGHash.get_model_architecture()
 
     # initialize D-SGD or Centralized SGD
     # communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
-    communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
+    # communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
 
     print('Beginning training...')
-    saveFolder = train(rank, PGHash, optimizer, communicator, train_data, test_data, n_labels, args)
+    saveFolder = train(rank, PGHash, optimizer, train_data, test_data, n_labels, args)
 
     # recv_indices = None
     # if rank == 0:

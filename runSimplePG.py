@@ -5,7 +5,7 @@ from dataloader import load_extreme_data
 from communicators import CentralizedSGD
 from mpi4py import MPI
 from misc import AverageMeter, Recorder, compute_accuracy_lsh
-from unpack import PGHash
+from PGHash import PGHash
 from mlp import SparseNeuralNetwork
 import time
 import resource

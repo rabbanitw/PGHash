@@ -176,21 +176,15 @@ class LSHCentralizedSGD:
     """
         centralized averaging, allowing periodic averaging
         """
-    def __init__(self, rank, size, comm, influence, layer_shapes, layer_sizes, i1, i2, num_f, num_l, hls):
+    def __init__(self, rank, size, comm, influence, i1, i2):
         self.comm = comm
         self.rank = rank
         self.size = size
         self.influence = influence
-        self.layer_shapes = layer_shapes
-        self.layer_sizes = layer_sizes
         self.i1 = i1
         self.i2 = i2
         self.iter = 0
         self.comm_iter = 0
-        self.start_idx_w = ((num_f * hls) + hls + (4 * hls))
-        self.num_features = num_f
-        self.num_labels = num_l
-        self.hls = hls
 
     def average(self, model, full_model, cur_idx, start_idx_b):
 
