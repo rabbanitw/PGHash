@@ -64,10 +64,17 @@ class PGHash:
         self.full_idx = [range((self.weight_idx + i * self.hls), (self.weight_idx + i * self.hls + self.hls))
                          for i in self.ci]
 
-    def update_full_model(self, weights, biases):
+    def update_full_model(self, m):
+        # update full model before averaging
+        weights = m.get_weights()
+        w = weights[-2]
+        b = weights[-1]
         # Update this in the future to gather the start size and not know based off of fixed network
-        self.full_model[self.full_idx] = weights.T
-        self.full_model[self.bias_idx] = biases
+        self.full_model[self.full_idx] = w.T
+        self.full_model[self.bias_idx] = b
+        # update the first part of the model as well!
+        partial_model = self.flatten_weights(weights[:-2])
+        self.full_model[:self.weight_idx] = partial_model
 
     def get_final_dense(self):
         dense_shape = (self.nl, self.hls)

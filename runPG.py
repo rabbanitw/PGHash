@@ -64,6 +64,9 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
             if lsh and step % steps_per_lsh == 0:
+                if step > 0:
+                    # update full model
+                    PGHash.update_full_model(model)
                 # compute LSH
                 cur_idx = PGHash.run_lsh(x_batch_train)
                 # get new model
@@ -75,7 +78,11 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
 
             batch = x_batch_train.get_shape()[0]
             y_true = get_partial_label(y_batch_train, cur_idx, batch)
-            loss_value, y_pred = train_step(x_batch_train, y_true)
+            with tf.GradientTape() as tape:
+                y_pred = model(x_batch_train, training=True)
+                loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+            grads = tape.gradient(loss_value, model.trainable_weights)
+            optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
             comm_time = 0
             lsh_time = 0
@@ -107,6 +114,7 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
 
             if step % 25 == 0:
                 if rank == 0:
+                    PGHash.update_full_model(model)
                     test_acc = PGHash.test_full_model(test_data, test_top1)
                     print("Step %d: Top 1 Test Accuracy %.4f" % (step, test_acc))
                     recorder.add_testacc(test_acc)
