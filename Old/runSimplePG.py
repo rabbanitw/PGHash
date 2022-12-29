@@ -3,9 +3,11 @@ import numpy as np
 import argparse
 from dataloader import load_extreme_data
 from communicators import CentralizedSGD
+from mlp import SparseNeuralNetwork
 from mpi4py import MPI
 from misc import AverageMeter, Recorder, compute_accuracy_lsh
-from unpack import LSH
+from unpack import get_sub_model, get_full_dense, get_model_architecture, unflatten_weights, flatten_weights
+from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 import time
 import resource
 import os
@@ -13,7 +15,28 @@ import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
-def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels, args):
+def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
+
+    # get input layer for LSH
+    feature_extractor = tf.keras.Model(
+        inputs=model.inputs,
+        outputs=model.layers[-3].output,
+    )
+    in_layer = feature_extractor(data).numpy()
+
+    # run LSH to find the most important weights
+    if hash_type == "pg_vanilla":
+        return pg_vanilla(in_layer, final_dense_w, sdim, num_tables, cr)
+    elif hash_type == "pg_avg":
+        return pg_avg(in_layer, final_dense_w, sdim, num_tables, cr)
+    elif hash_type == "slide_vanilla":
+        return slide_vanilla(in_layer, final_dense_w, sdim, num_tables, cr)
+    elif hash_type == "slide_avg":
+        return slide_avg(in_layer, final_dense_w, sdim, num_tables, cr)
+
+
+def train(rank, model, optimizer, communicator, train_data, test_data, full_model,
+          num_f, num_l, args):
 
     def train_step(x, y):
         with tf.GradientTape() as tape:
@@ -23,7 +46,10 @@ def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels,
         optimizer.apply_gradients(zip(grads, model.trainable_weights))
         return loss_value, y_pred
 
-    def get_partial_label(y_data, used_idx, batch_size, full_labels=num_labels):
+    def test_step(x, y, cur_idx):
+        y_pred = model(x, training=False)
+
+    def get_partial_label(y_data, used_idx, batch_size, full_labels):
         true_idx = y_data.indices.numpy()
         y_true = np.zeros((batch_size, full_labels))
         for i in true_idx:
@@ -37,19 +63,26 @@ def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels,
             f.write('{} {} {}\n'.format(datetime.datetime.now(), os.getpid(), mem))
 
     # hashing parameters
+    sdim = args.sdim
+    num_tables = args.num_tables
+    cr = args.cr
     lsh = args.lsh
+    hash_type = args.hash_type
     steps_per_lsh = args.steps_per_lsh
-    cur_idx = None
-    model = None
 
     # training parameters
     epochs = args.epochs
+    hls = args.hidden_layer_size
 
     top1 = AverageMeter()
     test_top1 = AverageMeter()
     losses = AverageMeter()
     recorder = Recorder('Output', args.name, MPI.COMM_WORLD.Get_size(), rank, hash_type)
     total_batches = 0
+    start_idx_b = full_model.size - num_l
+    start_idx_w = ((num_f * hls) + hls + (4 * hls))
+    used_idx = np.zeros(num_l)
+    cur_idx = np.arange(num_l)
     test_acc = np.NaN
 
     fname = 'r{}.log'.format(rank)
@@ -63,17 +96,28 @@ def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels,
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
             if step == 0:
+
                 # compute LSH
-                cur_idx = LSH.run_lsh(x_batch_train)
-                # get new model
-                model = LSH.get_new_model()
+                final_dense = get_full_dense(full_model, num_f, num_l, hls)
+                cur_idx = run_lsh(model, x_batch_train, final_dense, sdim, int(num_tables), cr, hash_type)
+                used_idx[cur_idx] += 1
+
+                worker_layer_dims = [num_f, hls, len(cur_idx)]
+                model = SparseNeuralNetwork(worker_layer_dims)
+                layer_shapes, layer_sizes = get_model_architecture(model)
+
+                # set new sub-model
+                w, b = get_sub_model(full_model, cur_idx, start_idx_b, num_f, hls)
+                sub_model = np.concatenate((full_model[:start_idx_w], w.flatten(), b.flatten()))
+                new_weights = unflatten_weights(sub_model, layer_shapes, layer_sizes)
+                model.set_weights(new_weights)
 
             get_memory(fname)
 
             init_time = time.time()
 
             batch = x_batch_train.get_shape()[0]
-            y_true = get_partial_label(y_batch_train, cur_idx, batch)
+            y_true = get_partial_label(y_batch_train, cur_idx, batch, num_l)
             loss_value, y_pred = train_step(x_batch_train, y_true)
 
             comm_time = 0
@@ -85,7 +129,7 @@ def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels,
             rec_init = time.time()
             losses.update(np.array(loss_value), batch)
 
-            acc1 = compute_accuracy_lsh(y_pred, y_batch_train, cur_idx, num_labels)
+            acc1 = compute_accuracy_lsh(y_pred, y_batch_train, cur_idx, num_l)
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
             comp_time = (time.time() - init_time) - (lsh_time + record_time)
@@ -109,7 +153,7 @@ def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels,
                     for (x_batch_test, y_batch_test) in test_data:
                         test_batch = x_batch_test.get_shape()[0]
                         y_pred_test = model(x_batch_test, training=False)
-                        test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, cur_idx, num_labels)
+                        test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, cur_idx, num_l)
                         test_top1.update(test_acc1, test_batch)
                     test_acc = test_top1.avg
                     print("(Rank %d) Step %d: Top 1 Test Accuracy %.4f" % (rank, step, test_acc))
@@ -119,7 +163,7 @@ def train(rank, LSH, optimizer, communicator, train_data, test_data, num_labels,
         # reset accuracy statistics for next epoch
         top1.reset()
         losses.reset()
-    return recorder.get_saveFolder()
+    return full_model, used_idx, recorder.get_saveFolder()
 
 
 if __name__ == '__main__':
@@ -183,16 +227,38 @@ if __name__ == '__main__':
     print('Initializing model...')
 
     # initialize model
-    LSH = LSH(n_labels, n_features, hls, sdim, num_tables, cr, hash_type)
+    initializer = tf.keras.initializers.GlorotUniform()
+    initial_final_dense = initializer(shape=(hls, n_labels)).numpy()
+    final_dense_shape = initial_final_dense.T.shape
+    num_c_layers = int(cr*n_labels)
+    worker_layer_dims = [n_features, hls, num_c_layers]
+    model = SparseNeuralNetwork(worker_layer_dims)
+
+    # get model architecture
+    layer_shapes, layer_sizes = get_model_architecture(model)
+
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-    layer_shapes, layer_sizes = LSH.get_model_architecture()
 
     # initialize D-SGD or Centralized SGD
     # communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
     communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
 
+    if cr < 1:
+        partial_model = flatten_weights(model.get_weights())
+        partial_size = partial_model.size
+        half_model_size = (n_features * hls) + hls + (4 * hls)
+        missing_bias = n_labels - num_c_layers
+        missing_weights = hls * (n_labels - num_c_layers)
+        full_dense_weights = hls * n_labels
+        full_model = np.zeros(partial_size + missing_weights + missing_bias)
+        full_model[:half_model_size] = partial_model[:half_model_size]
+        full_model[half_model_size:(half_model_size + full_dense_weights)] = initial_final_dense.T.flatten()
+    else:
+        full_model = flatten_weights(model.get_weights())
+
     print('Beginning training...')
-    saveFolder = train(rank, LSH, optimizer, communicator, train_data, test_data, n_labels, args)
+    full_model, used_indices, saveFolder = train(rank, model, optimizer, communicator, train_data, test_data,
+                                                 full_model, n_features, n_labels, args)
 
     # recv_indices = None
     # if rank == 0:

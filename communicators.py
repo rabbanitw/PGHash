@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from mpi4py import MPI
-from unpack import flatten_weights, unflatten_weights, update_full_model, get_sub_model
+from Old.unpack import flatten_weights, unflatten_weights, update_full_model, get_sub_model
 
 
 class DecentralizedSGD:
@@ -28,7 +28,7 @@ class DecentralizedSGD:
         self.comm_iter = 0
 
     def prepare_comm_buffer(self, model):
-        model_weights = model.get_weights()
+        model_weights = model.weights()
         # flatten tensor weights
         self.send_buffer = flatten_weights(model_weights)
         self.recv_buffer = np.zeros_like(self.send_buffer)

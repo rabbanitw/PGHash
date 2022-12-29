@@ -1,13 +1,11 @@
 import tensorflow as tf
 import numpy as np
-from sparse_bce import sparse_bce, sparse_bce_lsh
-from misc import compute_accuracy, compute_accuracy_lsh, AverageMeter, Recorder
+from misc import compute_accuracy, AverageMeter, Recorder
 from unpack import get_sub_model, get_full_dense, get_model_architecture, unflatten_weights
 from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 from mlp import SparseNeuralNetwork
 from mpi4py import MPI
 import time
-import gc
 
 
 def run_lsh(model, data, final_dense_w, sdim, num_tables, cr, hash_type):
