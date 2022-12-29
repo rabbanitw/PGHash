@@ -107,15 +107,7 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
 
             if step % 20 == 0:
                 if rank == 0:
-                    for (x_batch_test, y_batch_test) in test_data:
-                        test_batch = x_batch_test.get_shape()[0]
-                        y_pred_test = model(x_batch_test, training=False)
-                        test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, cur_idx, num_labels)
-                        test_top1.update(test_acc1, test_batch)
-                    test_acc = test_top1.avg
-                    '''
                     test_acc = PGHash.test_full_model(test_data, test_top1)
-                    '''
                     print("Step %d: Top 1 Test Accuracy %.4f" % (step, test_acc))
                     recorder.add_testacc(test_acc)
                     test_top1.reset()
