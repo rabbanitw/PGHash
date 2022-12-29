@@ -64,6 +64,7 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
             if lsh and step % steps_per_lsh == 0:
+                lsh_init = time.time()
                 if step > 0:
                     # update full model
                     PGHash.update_full_model(model)
@@ -71,6 +72,9 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
                 cur_idx = PGHash.run_lsh(x_batch_train)
                 # get new model
                 model = PGHash.get_new_model()
+                lsh_time = time.time()-lsh_init
+            else:
+                lsh_time = 0
 
             get_memory(fname)
 
@@ -85,7 +89,6 @@ def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labe
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
             comm_time = 0
-            lsh_time = 0
             # communication happens here
             # comm_time = communicator.communicate(model)
 
