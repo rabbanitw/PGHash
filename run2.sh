@@ -15,7 +15,7 @@
 module purge
 module load mpi
 module load cuda/11.4.4
-source ../../cmlscratch/marcob/environments/pghash/bin/activate
+source ../../../../cmlscratch/marcob/environments/pghash/bin/activate
 
 mpirun -np 1 python runPG.py --dataset Delicious200K --test_bs 8192
 
