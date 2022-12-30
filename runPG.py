@@ -31,7 +31,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
     lsh = args.lsh
     steps_per_lsh = args.steps_per_lsh
     cur_idx = None
-    model = None
+    model = PGHash.return_model()
 
     # training parameters
     epochs = args.epochs
@@ -53,12 +53,14 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
+            # communication happens here
+            model, comm_time = PGHash.communicate(model)
+
             init_time = time.time()
             if lsh and step % steps_per_lsh == 0:
                 lsh_init = time.time()
-                if step > 0:
-                    # update full model
-                    PGHash.update_full_model(model)
+                # update full model
+                PGHash.update_full_model(model)
                 # compute LSH
                 cur_idx = PGHash.run_lsh(x_batch_train)
                 # get new model
@@ -76,9 +78,6 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
                 loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
             grads = tape.gradient(loss_value, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
-
-            # communication happens here
-            model, comm_time = PGHash.communicate(model)
 
             # compute accuracy for the minibatch (top 1) & store accuracy and loss values
             rec_init = time.time()
@@ -131,7 +130,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_tables', type=int, default=50)
     parser.add_argument('--lr', type=int, default=1e-3)
     parser.add_argument('--cr', type=float, default=0.1)
-    parser.add_argument('--train_bs', type=int, default=32)
+    parser.add_argument('--train_bs', type=int, default=128)
     parser.add_argument('--test_bs', type=int, default=2048)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
     parser.add_argument('--epochs', type=int, default=5)

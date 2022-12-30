@@ -21,7 +21,7 @@ class PGHash:
         self.hash_type = hash_type
         self.used_idx = np.zeros(self.nl)
         self.num_c_layers = int(self.cr * self.nl)
-        self.ci = np.arange(self.num_c_layers)
+        self.ci = np.arange(self.nl)
         self.final_dense = None
         self.full_layer_shapes = None
         self.full_layer_sizes = None
@@ -56,6 +56,13 @@ class PGHash:
             print('ERROR: Compression Ratio is Greater Than 1 Which is Impossible!')
         else:
             self.full_model = self.flatten_weights(self.model.get_weights())
+
+        # make all models start at the same initial model
+        recv_buffer = np.empty_like(self.full_model)
+        MPI.COMM_WORLD.Allreduce((1/self.size) * self.full_model, recv_buffer, op=MPI.SUM)
+        self.full_model = recv_buffer
+        self.update_model()
+
         self.bias_start = self.full_model.size - self.nl
         self.bias_idx = self.ci + self.bias_start
 
@@ -95,6 +102,9 @@ class PGHash:
             unflatten_model.append(flat_weights[start_idx:end_idx].reshape(self.layer_shapes[i]))
             start_idx += layer_size
         return unflatten_model
+
+    def return_model(self):
+        return self.model
 
     def run_lsh(self, data):
 
