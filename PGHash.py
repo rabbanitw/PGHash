@@ -35,8 +35,6 @@ class PGHash:
         self.i2 = i2
         self.iter = 0
         self.comm_iter = 0
-        self.bias_start = self.full_model.size - self.nl
-        self.bias_idx = self.ci + self.bias_start
 
         # initialize model
         worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
@@ -58,6 +56,9 @@ class PGHash:
             print('ERROR: Compression Ratio is Greater Than 1 Which is Impossible!')
         else:
             self.full_model = self.flatten_weights(self.model.get_weights())
+
+        self.bias_start = self.full_model.size - self.nl
+        self.bias_idx = self.ci + self.bias_start
 
         # make all models start at the same initial model
         recv_buffer = np.empty_like(self.full_model)
