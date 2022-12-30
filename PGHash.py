@@ -66,6 +66,10 @@ class PGHash:
         self.full_model = recv_buffer
         self.update_model()
 
+        # get back to smaller size
+        self.ci = np.arange(self.num_c_layers)
+        self.get_indices()
+
     def get_model_architecture(self):
         # find shape and total elements for each layer of the resnet model
         model_weights = self.model.get_weights()

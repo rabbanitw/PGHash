@@ -42,7 +42,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
     recorder = Recorder('Output', args.name, MPI.COMM_WORLD.Get_size(), rank, hash_type)
     total_batches = 0
     test_acc = np.NaN
-    comm_time = 0
+    # comm_time = 0
 
     fname = 'r{}.log'.format(rank)
     if os.path.exists(fname):
@@ -57,11 +57,12 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
             init_time = time.time()
 
             # communication happens here, except on first step
-            if not(step == 0 and epoch == 0):
-                model, comm_time = PGHash.communicate(model)
+            # if not(step == 0 and epoch == 0):
+            model, comm_time = PGHash.communicate(model)
 
             if lsh and step % steps_per_lsh == 0:
                 lsh_init = time.time()
+                # if not (step == 0 and epoch == 0):
                 # update full model
                 PGHash.update_full_model(model)
                 # compute LSH
