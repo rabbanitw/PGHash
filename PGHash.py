@@ -35,6 +35,8 @@ class PGHash:
         self.i2 = i2
         self.iter = 0
         self.comm_iter = 0
+        self.bias_start = self.full_model.size - self.nl
+        self.bias_idx = self.ci + self.bias_start
 
         # initialize model
         worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
@@ -62,9 +64,6 @@ class PGHash:
         MPI.COMM_WORLD.Allreduce((1/self.size) * self.full_model, recv_buffer, op=MPI.SUM)
         self.full_model = recv_buffer
         self.update_model()
-
-        self.bias_start = self.full_model.size - self.nl
-        self.bias_idx = self.ci + self.bias_start
 
     def get_model_architecture(self):
         # find shape and total elements for each layer of the resnet model

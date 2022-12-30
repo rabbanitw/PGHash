@@ -53,10 +53,11 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
+            init_time = time.time()
+
             # communication happens here
             model, comm_time = PGHash.communicate(model)
 
-            init_time = time.time()
             if lsh and step % steps_per_lsh == 0:
                 lsh_init = time.time()
                 # update full model
@@ -86,7 +87,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
             acc1 = compute_accuracy_lsh(y_pred, y_batch_train, cur_idx, num_labels)
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
-            comp_time = (time.time() - init_time) - (lsh_time + record_time)
+            comp_time = (time.time() - init_time) - (lsh_time + record_time + comm_time)
 
             recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, test_acc, loss_value.numpy(),
                              top1.avg, losses.avg)
