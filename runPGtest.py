@@ -4,12 +4,17 @@ import argparse
 from dataloader import load_extreme_data
 from mpi4py import MPI
 from misc import AverageMeter, Recorder, compute_accuracy_lsh
-from PGHash import PGHash
+from PGHashTest import PGHash
+from mlp import SparseNeuralNetwork
 import time
 import resource
 import os
 import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
+
+def flatten_weights(weight_list):
+    return np.concatenate(list(weight_list[i].flatten() for i in range(len(weight_list))))
 
 
 def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
@@ -58,6 +63,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
             # communication
             model, comm_time = PGHash.communicate(model)
 
+            comm_time = 0
             if lsh and step % steps_per_lsh == 0:
                 lsh_init = time.time()
                 # update full model
@@ -97,16 +103,46 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
 
             total_batches += batch
             # Log every 200 batches.
-            if step % 10 == 0:
+            if step % 1 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
                     % (rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
                 )
 
-            if step % 25 == 0:
+            if step % 5 == 0:
                 if rank == 0:
+
+                    '''
+                    PGHash.update_full_model(model)
+                    fmw = PGHash.return_full_model()
+                    fm = SparseNeuralNetwork([782585, 128, num_labels])
+                    # find shape and total elements for each layer of the resnet model
+                    model_weights = fm.get_weights()
+                    layer_shapes = []
+                    layer_sizes = []
+                    for i in range(len(model_weights)):
+                        layer_shapes.append(model_weights[i].shape)
+                        layer_sizes.append(model_weights[i].size)
+                    unflatten_model = []
+                    start_idx = 0
+                    end_idx = 0
+                    for i in range(len(layer_shapes)):
+                        layer_size = layer_sizes[i]
+                        end_idx += layer_size
+                        unflatten_model.append(fmw[start_idx:end_idx].reshape(layer_shapes[i]))
+                        start_idx += layer_size
+                    fm.set_weights(unflatten_model)
+                    for (x_batch_test, y_batch_test) in test_data:
+                        test_batch = x_batch_test.get_shape()[0]
+                        # y_pred_test = model(x_batch_test, training=False)
+                        y_pred_test = fm(x_batch_test, training=False)
+                        test_acc = compute_accuracy_lsh(y_pred_test, y_batch_test, cur_idx, num_labels)
+                        test_top1.update(test_acc, test_batch)
+                    '''
+
                     PGHash.update_full_model(model)
                     test_acc = PGHash.test_full_model(test_data, test_top1)
+
                     print("Step %d: Top 1 Test Accuracy %.4f" % (step, test_acc))
                     recorder.add_testacc(test_acc)
                     test_top1.reset()

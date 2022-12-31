@@ -25,7 +25,9 @@ class PGHash:
         self.final_dense = None
         self.full_layer_shapes = None
         self.full_layer_sizes = None
-        self.weight_idx = (self.nf * self.hls) + self.hls + (4 * self.hls)
+        self.weight_idx = (self.nf * self.hls) + self.hls # + (4 * self.hls)
+        #self.full_idx = [range((self.weight_idx + i * self.hls), (self.weight_idx + i * self.hls + self.hls))
+        #                 for i in self.ci]
         self.full_idx = [range((self.weight_idx + i * self.hls), (self.weight_idx + i * self.hls + self.hls))
                          for i in self.ci]
         self.rank = rank
@@ -55,10 +57,12 @@ class PGHash:
         elif self.cr > 1:
             print('ERROR: Compression Ratio is Greater Than 1 Which is Impossible!')
         else:
+            print('No Compression Being Used')
             self.full_model = self.flatten_weights(self.model.get_weights())
 
         self.bias_start = self.full_model.size - self.nl
         self.bias_idx = self.ci + self.bias_start
+        self.dense_shape = (self.hls, self.nl)
 
         # make all models start at the same initial model
         recv_buffer = np.empty_like(self.full_model)
@@ -86,9 +90,7 @@ class PGHash:
                          for i in self.ci]
 
     def get_final_dense(self):
-        dense_shape = (self.nl, self.hls)
-        end_idx = self.weight_idx + (self.hls * self.nl)
-        self.final_dense = self.full_model[self.weight_idx:end_idx].reshape(dense_shape).T
+        self.final_dense = self.full_model[self.weight_idx:self.bias_start].reshape(self.dense_shape)
 
     def get_partial_model(self):
         return self.unflatten_weights(self.full_model[:self.weight_idx])
@@ -109,6 +111,9 @@ class PGHash:
 
     def return_model(self):
         return self.model
+
+    def return_full_model(self):
+        return self.full_model
 
     def run_lsh(self, data):
 
@@ -140,22 +145,54 @@ class PGHash:
     def update_full_model(self, model):
         # update full model before averaging
         weights = model.get_weights()
+
         w = weights[-2]
         b = weights[-1]
+
+        '''
         # Update this in the future to gather the start size and not know based off of fixed network
         self.full_model[self.full_idx] = w.T
         self.full_model[self.bias_idx] = b
         # update the first part of the model as well!
         partial_model = self.flatten_weights(weights[:-2])
         self.full_model[:self.weight_idx] = partial_model
+        '''
+
+        self.get_final_dense()
+        self.final_dense[:, self.ci] = w
+        self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
+        self.full_model[self.bias_idx] = b
+        # update the first part of the model as well!
+        partial_model = self.flatten_weights(weights[:-2])
+        self.full_model[:self.weight_idx] = partial_model
+
+
 
     def update_model(self):
+
+        '''
         # get biases
         biases = self.full_model[self.bias_idx]
         # get weights
+        # PROBLEM IS POTENTIALLY THE TRANSPOSE
         weights = self.full_model[self.full_idx].T
         # set new sub-model
         sub_model = np.concatenate((self.full_model[:self.weight_idx], weights.flatten(), biases.flatten()))
+
+        print(np.linalg.norm(self.full_model - sub_model))
+
+        new_weights = self.unflatten_weights(sub_model)
+        self.model.set_weights(new_weights)
+        '''
+
+        # get biases
+        biases = self.full_model[self.bias_idx]
+        # get weights
+        self.get_final_dense()
+        weights = self.final_dense[:, self.ci]
+        # set new sub-model
+        sub_model = np.concatenate((self.full_model[:self.weight_idx], weights.flatten(), biases.flatten()))
+
         new_weights = self.unflatten_weights(sub_model)
         self.model.set_weights(new_weights)
 
@@ -165,6 +202,7 @@ class PGHash:
         self.model = SparseNeuralNetwork(worker_layer_dims)
         self.layer_shapes, self.layer_sizes = self.get_model_architecture()
         self.update_model()
+
         if returnModel:
             return self.model
 

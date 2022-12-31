@@ -75,6 +75,7 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
         new = np.random.choice(possible_idx, diff, replace=False)
         return np.concatenate((inds, new))
     '''
+    return np.sort(inds)
 
 
 #Takes a layer input and determines which weights are cosin (dis)similar via PGHash
@@ -126,7 +127,7 @@ def slide_vanilla(in_layer,weight, sdim, num_tables, cr):
         if len(inds) <= thresh:
             return inds
         inds = np.intersect1d(inds, slidehash(in_layer, weight, n, sdim))
-    return inds
+    return np.sort(inds)
     
 
 
@@ -167,7 +168,7 @@ def pg_avg(in_layer, weight, sdim, num_tables, cr):
 
     # pick just the largest differences
     avg_ham_dists = -ham_dists / (bs*num_tables)
-    return (tf.math.top_k(avg_ham_dists, thresh)).indices.numpy()
+    return np.sort((tf.math.top_k(avg_ham_dists, thresh)).indices.numpy())
 
 
 #Takes a layer input and determines which weights are cosine (dis)similar via PGHash
@@ -204,4 +205,4 @@ def slide_avg(in_layer, weight, sdim, num_tables, cr):
 
     # pick just the largest differences
     avg_ham_dists = -ham_dists / (bs * num_tables)
-    return (tf.math.top_k(avg_ham_dists, thresh)).indices.numpy()
+    return np.sort((tf.math.top_k(avg_ham_dists, thresh)).indices.numpy())
