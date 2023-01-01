@@ -25,11 +25,7 @@ class PGHash:
         self.final_dense = None
         self.full_layer_shapes = None
         self.full_layer_sizes = None
-        self.weight_idx = (self.nf * self.hls) + self.hls # + (4 * self.hls)
-        #self.full_idx = [range((self.weight_idx + i * self.hls), (self.weight_idx + i * self.hls + self.hls))
-        #                 for i in self.ci]
-        self.full_idx = [range((self.weight_idx + i * self.hls), (self.weight_idx + i * self.hls + self.hls))
-                         for i in self.ci]
+        self.weight_idx = (self.nf * self.hls) + self.hls + (4 * self.hls)
         self.rank = rank
         self.size = size
         self.influence = influence
