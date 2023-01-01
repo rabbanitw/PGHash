@@ -5,15 +5,16 @@ def DenseLayer(output_dim):
     return tf.keras.layers.Dense(output_dim)
 
 
-def SparseNeuralNetwork(layer_dims, sparsity=True):
+def SparseNeuralNetwork(layer_dims, sparsity=True, training=True):
     inputs = tf.keras.layers.Input(shape=(layer_dims[0],), sparse=sparsity)
     x = DenseLayer(layer_dims[1])(inputs)
     if len(layer_dims) > 2:
         for i in range(2, len(layer_dims)):
-            x = tf.keras.layers.BatchNormalization()(x)
+            x = tf.keras.layers.BatchNormalization()(x, training=training)
             x = tf.keras.activations.relu(x)
             x = DenseLayer(layer_dims[i])(x)
-    x = tf.keras.activations.sigmoid(x)
+    # x = tf.keras.activations.softmax(x)
+    # x = tf.keras.activations.sigmoid(x)
     # create the model
     model = tf.keras.Model(inputs, x)
     # return the constructed network architecture
