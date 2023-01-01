@@ -6,58 +6,58 @@ from mpi4py import MPI
 from misc import AverageMeter, Recorder, compute_accuracy_lsh
 from PGHash import PGHash
 import time
-import resource
 import os
-import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
 def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
 
-    def get_partial_label(y_data, used_idx, batch_size, full_labels=num_labels):
-        true_idx = y_data.indices.numpy()
-        y_true = np.zeros((batch_size, full_labels))
+    def get_partial_label(sparse_y, sub_idx, batch_size, full_num_labels=num_labels):
+        '''
+        Takes a sparse full label and converts it into a dense sub-label corresponding to the output nodes in the
+        sub-architecture for a given device
+        :param sparse_y: Sparse full labels
+        :param sub_idx: Indices for which output nodes are used/activated in the sub-architecture
+        :param batch_size: Batch size
+        :param full_num_labels: Total number of output nodes
+        :return: Dense sub-label corresponding to given output nodes
+        '''
+        true_idx = sparse_y.indices.numpy()
+        y_true = np.zeros((batch_size, full_num_labels))
         for i in true_idx:
             y_true[i[0], i[1]] = 1
-        return tf.convert_to_tensor(y_true[:, used_idx], dtype=tf.float32)
-
-    def get_memory(filename):
-        mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        with open(filename, 'a') as f:
-            # Dump timestamp, PID and amount of RAM.
-            f.write('{} {} {}\n'.format(datetime.datetime.now(), os.getpid(), mem))
+        return tf.convert_to_tensor(y_true[:, sub_idx], dtype=tf.float32)
 
     # hashing parameters
     lsh = args.lsh
     steps_per_lsh = args.steps_per_lsh
     cur_idx = None
-    model = PGHash.return_model()
 
     # training parameters
     epochs = args.epochs
+    model = PGHash.return_model()
+    total_batches = 0
+    test_acc = np.NaN
 
+    # initialize meters
     top1 = AverageMeter()
     test_top1 = AverageMeter()
     losses = AverageMeter()
     recorder = Recorder('Output', args.name, MPI.COMM_WORLD.Get_size(), rank, hash_type)
-    total_batches = 0
-    test_acc = np.NaN
 
-    fname = 'r{}.log'.format(rank)
-    if os.path.exists(fname):
-        os.remove(fname)
-
+    # begin training
     for epoch in range(epochs):
         print("\nStart of epoch %d" % (epoch,))
 
-        # Iterate over the batches of the dataset.
+        # iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
             init_time = time.time()
 
-            # communication
+            # communicate models amongst devices
             model, comm_time = PGHash.communicate(model)
 
+            # perform lsh every X steps
             if lsh and step % steps_per_lsh == 0:
                 lsh_init = time.time()
                 # update full model
@@ -70,39 +70,39 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
             else:
                 lsh_time = 0
 
-            get_memory(fname)
-
+            # transform sparse label to dense sub-label
             batch = x_batch_train.get_shape()[0]
             y_true = get_partial_label(y_batch_train, cur_idx, batch)
+
+            # perform gradient update
             with tf.GradientTape() as tape:
                 y_pred = model(x_batch_train, training=True)
                 loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
             grads = tape.gradient(loss_value, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
-            # compute accuracy for the minibatch (top 1) & store accuracy and loss values
+            # compute accuracy (top 1) and loss for the minibatch
             rec_init = time.time()
             losses.update(np.array(loss_value), batch)
-
             acc1 = compute_accuracy_lsh(y_pred, y_batch_train, cur_idx, num_labels)
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
             comp_time = (time.time() - init_time) - (lsh_time + record_time + comm_time)
 
+            # store and save accuracy and loss values
             recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, test_acc, loss_value.numpy(),
                              top1.avg, losses.avg)
-
-            # Save data to output folder
             recorder.save_to_file()
 
+            # log every X batches
             total_batches += batch
-            # Log every 200 batches.
             if step % 10 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
                     % (rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
                 )
 
+            # compute test accuracy every X steps
             if step % 25 == 0:
                 if rank == 0:
                     PGHash.update_full_model(model)
@@ -120,7 +120,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    # Add an argument
+    # add arguments
     parser.add_argument('--name', type=str, default='Test')
     parser.add_argument('--dataset', type=str, default='Amazon670K')
     parser.add_argument('--graph_type', type=str, default='ring')
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
 
-    # Parse the argument
+    # parse the argument
     args = parser.parse_args()
 
     # mpi info
@@ -171,26 +171,17 @@ if __name__ == '__main__':
     train_data_path = 'Data/' + args.dataset + '/train.txt'
     test_data_path = 'Data/' + args.dataset + '/test.txt'
 
+    # load (large) dataset
     print('Loading and partitioning data...')
     train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, train_bs, test_bs,
                                                                     train_data_path, test_data_path)
 
-    print('Initializing model...')
-
     # initialize model
+    print('Initializing model...')
     PGHash = PGHash(n_labels, n_features, hls, sdim, num_tables, cr, hash_type, rank, size, 1 / size, 0, 1)
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
     layer_shapes, layer_sizes = PGHash.get_model_architecture()
 
-    # initialize D-SGD or Centralized SGD
-    # communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
-    # communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
-
+    # begin training
     print('Beginning training...')
     saveFolder = train(rank, PGHash, optimizer, train_data, test_data, n_labels, args)
-
-    # recv_indices = None
-    # if rank == 0:
-    #     recv_indices = np.empty_like(used_indices)
-    # MPI.COMM_WORLD.Reduce(used_indices, recv_indices, op=MPI.SUM, root=0)
-

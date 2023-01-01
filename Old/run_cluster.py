@@ -3,12 +3,10 @@ import numpy as np
 import argparse
 from dataloader import load_extreme_data
 from train_cluster import train
-from network import Graph
-from communicators import DecentralizedSGD, CentralizedSGD, LSHCentralizedSGD
 from mlp import SparseNeuralNetwork
-from unpack import get_model_architecture, flatten_weights
+from unpack import get_model_architecture
 from mpi4py import MPI
-import os
+
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
