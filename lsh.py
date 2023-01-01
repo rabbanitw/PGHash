@@ -9,6 +9,7 @@ import sklearn.metrics as sn
 #sdim = length of hash signature. must divide length of in_layer/# of weight rows
 #num_tables = how many hash tables to compare across
 #cr = compression rate, percentage of rows of weight matrix to preserve
+
 def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
 
     #Parameters:
@@ -52,29 +53,6 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
         if len(inds) <= thresh:
             return inds
         inds = np.intersect1d(inds, pghash(in_layer, weight, n, sdim))
-
-    '''
-    inds = []
-    # Loop over the desired number of tables.
-    for _ in range(num_tables):
-        inds.append(pghash(in_layer, weight, n, sdim))
-        u_idx = np.unique(np.concatenate(inds))
-        idx_len = len(np.unique(np.concatenate(inds)))
-        if idx_len >= thresh:
-            return np.unique(np.concatenate(inds))
-
-    inds, frequency = np.unique(np.concatenate(inds), return_counts=True)
-
-    if len(inds) > thresh:
-        # choose the weights proportional to how frequently they pop-up
-        p = frequency / np.sum(frequency)
-        return np.random.choice(inds, thresh, p=p, replace=False)
-    else:
-        diff = thresh - len(inds)
-        possible_idx = np.setdiff1d(np.arange(cols), inds)
-        new = np.random.choice(possible_idx, diff, replace=False)
-        return np.concatenate((inds, new))
-    '''
     return np.sort(inds)
 
 
@@ -87,8 +65,7 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
 #cr = compression rate, percentage of rows of weight matrix to preserve
 def slide_vanilla(in_layer,weight, sdim, num_tables, cr):
 
-    def slidehash(in_layers, vectors, n, sdim):
-
+  def slidehash(in_layers, vectors, n, sdim):
         # create gaussian matrix
         slide_mat = np.random.normal(size=(sdim, n))
 
@@ -128,8 +105,6 @@ def slide_vanilla(in_layer,weight, sdim, num_tables, cr):
             return inds
         inds = np.intersect1d(inds, slidehash(in_layer, weight, n, sdim))
     return np.sort(inds)
-    
-
 
 #Takes a layer input and determines which weights are cosine (dis)similar via PGHash
 #Parameters:
