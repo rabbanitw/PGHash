@@ -103,7 +103,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
                 )
 
             # compute test accuracy every X steps
-            if step % 25 == 0:
+            if step % args.steps_per_test == 0:
                 if rank == 0:
                     PGHash.update_full_model(model)
                     test_acc = PGHash.test_full_model(test_data, test_top1)
@@ -134,6 +134,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_bs', type=int, default=128)
     parser.add_argument('--test_bs', type=int, default=2048)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
+    parser.add_argument('--steps_per_test', type=int, default=25)
     parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
 
