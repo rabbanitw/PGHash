@@ -65,7 +65,7 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
 #cr = compression rate, percentage of rows of weight matrix to preserve
 def slide_vanilla(in_layer,weight, sdim, num_tables, cr):
 
-  def slidehash(in_layers, vectors, n, sdim):
+    def slidehash(in_layers, vectors, n, sdim):
         # create gaussian matrix
         slide_mat = np.random.normal(size=(sdim, n))
 

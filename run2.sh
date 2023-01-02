@@ -3,7 +3,7 @@
 # Lines that begin with #SBATCH specify commands to be used by SLURM for scheduling
 
 #SBATCH --job-name=test    # sets the job name if not set from environment
-#SBATCH --time=02:30:00    # how long you think your job will take to complete; format=hh:mm:ss
+#SBATCH --time=20:30:00    # how long you think your job will take to complete; format=hh:mm:ss
 #SBATCH --account=scavenger    # set QOS, this will determine what resources can be requested
 #SBATCH --qos=scavenger    # set QOS, this will determine what resources can be requested
 #SBATCH --partition=scavenger
@@ -17,6 +17,6 @@ module load mpi
 module load cuda/11.4.4
 source ../../../../cmlscratch/marcob/environments/pghash/bin/activate
 
-mpirun -np 1 python runPG.py --dataset Delicious200K --test_bs 8192
+mpirun -np 1 python runPG.py --dataset Amazon670K --test_bs 8192 --train_bs 256 --steps_per_test 100
 
 # --mca btl_openib_warn_no_device_params_found 0 --mca orte_base_help_aggregate 0 --mca btl ^openib ...
