@@ -12,6 +12,7 @@ class PGHash:
     def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
                  rank, size, influence, i1, i2):
 
+        # initialize all parameters
         self.nl = num_labels
         self.nf = num_features
         self.hls = hidden_layer_size
@@ -19,13 +20,6 @@ class PGHash:
         self.num_tables = num_tables
         self.cr = cr
         self.hash_type = hash_type
-        self.used_idx = np.zeros(self.nl)
-        self.num_c_layers = int(self.cr * self.nl)
-        self.ci = np.arange(self.nl)
-        self.final_dense = None
-        self.full_layer_shapes = None
-        self.full_layer_sizes = None
-        self.weight_idx = (self.nf * self.hls) + self.hls + (4 * self.hls)
         self.rank = rank
         self.size = size
         self.influence = influence
@@ -33,6 +27,15 @@ class PGHash:
         self.i2 = i2
         self.iter = 0
         self.comm_iter = 0
+        self.used_idx = np.zeros(self.nl)
+        self.ci = np.arange(self.nl)
+        self.final_dense = None
+        self.full_layer_shapes = None
+        self.full_layer_sizes = None
+
+        # initialize the start of the compressed network weights and the total number of compressed labels
+        self.num_c_layers = int(self.cr * self.nl)
+        self.weight_idx = (self.nf * self.hls) + self.hls + (4 * self.hls)
 
         # initialize model
         worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
@@ -56,6 +59,7 @@ class PGHash:
             print('No Compression Being Used')
             self.full_model = self.flatten_weights(self.model.get_weights())
 
+        # determine where the bias index starts
         self.bias_start = self.full_model.size - self.nl
         self.bias_idx = self.ci + self.bias_start
         self.dense_shape = (self.hls, self.nl)
@@ -68,10 +72,9 @@ class PGHash:
 
         # get back to smaller size
         self.ci = np.arange(self.num_c_layers)
-        self.get_indices()
+        self.bias_idx = self.ci + self.bias_start
 
     def get_model_architecture(self):
-        # find shape and total elements for each layer of the resnet model
         model_weights = self.model.get_weights()
         layer_shapes = []
         layer_sizes = []
@@ -79,11 +82,6 @@ class PGHash:
             layer_shapes.append(model_weights[i].shape)
             layer_sizes.append(model_weights[i].size)
         return layer_shapes, layer_sizes
-
-    def get_indices(self):
-        self.bias_idx = self.ci + self.bias_start
-        self.full_idx = [range((self.weight_idx + i * self.hls), (self.weight_idx + i * self.hls + self.hls))
-                         for i in self.ci]
 
     def get_final_dense(self):
         self.final_dense = self.full_model[self.weight_idx:self.bias_start].reshape(self.dense_shape)
@@ -108,9 +106,6 @@ class PGHash:
     def return_model(self):
         return self.model
 
-    def return_full_model(self):
-        return self.full_model
-
     def run_lsh(self, data):
 
         self.get_final_dense()
@@ -133,7 +128,7 @@ class PGHash:
             self.ci = slide_avg(in_layer, self.final_dense, self.sdim, self.num_tables, self.cr)
 
         # update indices with new current index
-        self.get_indices()
+        self.bias_idx = self.ci + self.bias_start
         # record the indices selected
         self.used_idx[self.ci] += 1
         return self.ci
@@ -144,16 +139,6 @@ class PGHash:
 
         w = weights[-2]
         b = weights[-1]
-
-        '''
-        # Update this in the future to gather the start size and not know based off of fixed network
-        self.full_model[self.full_idx] = w.T
-        self.full_model[self.bias_idx] = b
-        # update the first part of the model as well!
-        partial_model = self.flatten_weights(weights[:-2])
-        self.full_model[:self.weight_idx] = partial_model
-        '''
-
         self.get_final_dense()
         self.final_dense[:, self.ci] = w
         self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
@@ -162,24 +147,7 @@ class PGHash:
         partial_model = self.flatten_weights(weights[:-2])
         self.full_model[:self.weight_idx] = partial_model
 
-
-
     def update_model(self):
-
-        '''
-        # get biases
-        biases = self.full_model[self.bias_idx]
-        # get weights
-        # PROBLEM IS POTENTIALLY THE TRANSPOSE
-        weights = self.full_model[self.full_idx].T
-        # set new sub-model
-        sub_model = np.concatenate((self.full_model[:self.weight_idx], weights.flatten(), biases.flatten()))
-
-        print(np.linalg.norm(self.full_model - sub_model))
-
-        new_weights = self.unflatten_weights(sub_model)
-        self.model.set_weights(new_weights)
-        '''
 
         # get biases
         biases = self.full_model[self.bias_idx]
@@ -235,13 +203,13 @@ class PGHash:
         return self.model, toc - tic
 
     def communicate(self, model):
-        # Have to have this here because of the case that i1 = 0 (cant do 0 % 0)
+
+        # have to have this here because of the case that i1 = 0 (cant do 0 % 0)
         self.iter += 1
         comm_time = 0
         # I1: Number of Local Updates Communication Set
         if self.iter % (self.i1+1) == 0:
             self.comm_iter += 1
-            # decentralized averaging according to activated topology
             model, t = self.average(model)
             comm_time += t
             # I2: Number of Consecutive 1-Step Averaging
@@ -251,5 +219,3 @@ class PGHash:
                 # decrease iteration by one in order to run another one update and average step (I2 communication)
                 self.iter -= 1
         return model, comm_time
-
-

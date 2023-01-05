@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import time
-from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
+from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla, pghash
 from mlp import SparseNeuralNetwork
 from misc import compute_accuracy_lsh
 from mpi4py import MPI
@@ -10,7 +10,7 @@ from mpi4py import MPI
 class PGHash:
 
     def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
-                 rank, size, influence, i1, i2):
+                 rank, size, q, influence, i1, i2):
 
         # initialize all parameters
         self.nl = num_labels
@@ -19,6 +19,7 @@ class PGHash:
         self.sdim = sdim
         self.num_tables = num_tables
         self.cr = cr
+        self.q = q
         self.hash_type = hash_type
         self.rank = rank
         self.size = size
@@ -105,6 +106,75 @@ class PGHash:
 
     def return_model(self):
         return self.model
+
+    def lsh_avg_simple(self, data):
+
+        # get weights
+        self.get_final_dense()
+        n = self.final_dense.shape[0]
+
+        # get input layer for LSH
+        feature_extractor = tf.keras.Model(
+            inputs=self.model.inputs,
+            outputs=self.model.layers[-3].output,
+        )
+        in_layer = feature_extractor(data).numpy()
+        bs = in_layer.shape[0]
+        ham_dists = np.zeros(self.nl)
+
+        # run LSH to find the most important weights over the entire next Q batches
+        for _ in range(self.num_tables):
+            g_mat, ht = pghash(self.final_dense, self.sdim, n)
+            ham_dists += pg_avg(in_layer, g_mat, ht)
+
+        # pick just the largest differences
+        avg_ham_dists = -ham_dists / (bs * self.num_tables)
+        self.ci = np.sort((tf.math.top_k(avg_ham_dists, self.num_c_layers)).indices.numpy())
+
+        # update indices with new current index
+        self.bias_idx = self.ci + self.bias_start
+
+        return self.ci
+
+
+    def lsh_avg(self, data):
+
+        # get weights
+        self.get_final_dense()
+        n = self.final_dense.shape[0]
+
+        # get input layer for LSH
+        feature_extractor = tf.keras.Model(
+            inputs=self.model.inputs,
+            outputs=self.model.layers[-3].output,
+        )
+        total_in_layer = feature_extractor(data).numpy()
+        true_bs = int(total_in_layer.shape[0]/self.q)
+        ind_per_batch = int(self.num_c_layers/self.q)
+        ci = np.empty(0)
+
+        for i in range(self.q):
+
+            in_layer = total_in_layer[(i*true_bs):((i+1)*true_bs), :]
+            ham_dists = np.zeros(self.nl)
+
+            # run LSH to find the most important weights over the entire next Q batches
+            for _ in range(self.num_tables):
+                g_mat, ht = pghash(self.final_dense, self.sdim, n)
+                ham_dists += pg_avg(in_layer, g_mat, ht)
+
+            # pick just the largest differences
+            avg_ham_dists = -ham_dists / (true_bs * self.num_tables)
+            ci = np.union1d(np.sort((tf.math.top_k(avg_ham_dists, ind_per_batch)).indices.numpy()), ci)
+        self.ci = ci
+
+        # update indices with new current index
+        self.bias_idx = self.ci + self.bias_start
+
+        return self.ci
+
+
+
 
     def run_lsh(self, data):
 

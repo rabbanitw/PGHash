@@ -3,7 +3,7 @@ import numpy as np
 from sparse_bce import sparse_bce, sparse_bce_lsh
 from misc import compute_accuracy, compute_accuracy_lsh, AverageMeter, Recorder
 from unpack import get_sub_model, get_full_dense, unflatten_weights, flatten_weights, get_model_architecture
-from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla
+from lsh2 import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 from mlp import SparseNeuralNetwork
 from mpi4py import MPI
 import time
