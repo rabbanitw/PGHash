@@ -136,7 +136,6 @@ class PGHash:
 
         return self.ci
 
-
     def lsh_avg(self, data):
 
         # get weights
@@ -165,42 +164,14 @@ class PGHash:
 
             # pick just the largest differences
             avg_ham_dists = -ham_dists / (true_bs * self.num_tables)
+
+            # union the indices of each batch
             ci = np.union1d(np.sort((tf.math.top_k(avg_ham_dists, ind_per_batch)).indices.numpy()), ci)
         self.ci = ci
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
 
-        return self.ci
-
-
-
-
-    def run_lsh(self, data):
-
-        self.get_final_dense()
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=self.model.inputs,
-            outputs=self.model.layers[-3].output,
-        )
-        in_layer = feature_extractor(data).numpy()
-
-        # run LSH to find the most important weights
-        if self.hash_type == "pg_vanilla":
-            self.ci = pg_vanilla(in_layer, self.final_dense, self.sdim, self.num_tables, self.cr)
-        elif self.hash_type == "pg_avg":
-            self.ci = pg_avg(in_layer, self.final_dense, self.sdim, self.num_tables, self.cr)
-        elif self.hash_type == "slide_vanilla":
-            self.ci = slide_vanilla(in_layer, self.final_dense, self.sdim, self.num_tables, self.cr)
-        elif self.hash_type == "slide_avg":
-            self.ci = slide_avg(in_layer, self.final_dense, self.sdim, self.num_tables, self.cr)
-
-        # update indices with new current index
-        self.bias_idx = self.ci + self.bias_start
-        # record the indices selected
-        self.used_idx[self.ci] += 1
         return self.ci
 
     def update_full_model(self, model):

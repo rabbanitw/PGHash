@@ -3,42 +3,14 @@ import numpy as np
 import argparse
 from dataloader import load_extreme_data
 from mpi4py import MPI
-from misc import AverageMeter, Recorder, compute_accuracy_lsh
+from misc import AverageMeter, Recorder
 from pg_hash2 import PGHash
 from pg_train import pg_train
-import time
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
 def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
-
-    def get_partial_label(sparse_y, sub_idx, batch_size, full_num_labels=num_labels):
-        '''
-        Takes a sparse full label and converts it into a dense sub-label corresponding to the output nodes in the
-        sub-architecture for a given device
-        :param sparse_y: Sparse full labels
-        :param sub_idx: Indices for which output nodes are used/activated in the sub-architecture
-        :param batch_size: Batch size
-        :param full_num_labels: Total number of output nodes
-        :return: Dense sub-label corresponding to given output nodes
-        '''
-        true_idx = sparse_y.indices.numpy()
-        y_true = np.zeros((batch_size, full_num_labels))
-        for i in true_idx:
-            y_true[i[0], i[1]] = 1
-        return tf.convert_to_tensor(y_true[:, sub_idx], dtype=tf.float32)
-
-    # hashing parameters
-    lsh = args.lsh
-    steps_per_lsh = args.steps_per_lsh
-    cur_idx = None
-
-    # training parameters
-    epochs = args.epochs
-    model = PGHash.return_model()
-    total_batches = 0
-    test_acc = np.NaN
 
     # initialize meters
     top1 = AverageMeter()
@@ -47,9 +19,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
     recorder = Recorder('Output', args.name, MPI.COMM_WORLD.Get_size(), rank, hash_type)
 
     # begin training
-    pg_train(train_data, args)
-
-    return recorder.get_saveFolder()
+    pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels)
 
 
 if __name__ == '__main__':
@@ -126,4 +96,4 @@ if __name__ == '__main__':
 
     # begin training
     print('Beginning training...')
-    saveFolder = train(rank, PGHash, optimizer, train_data, test_data, n_labels, args)
+    train(rank, PGHash, optimizer, train_data, test_data, n_labels, args)
