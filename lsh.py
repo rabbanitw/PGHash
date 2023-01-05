@@ -63,7 +63,7 @@ def pg_vanilla(in_layer,weight, sdim, num_tables, cr):
 #sdim = length of hash signature. must divide length of in_layer/# of weight rows
 #num_tables = how many hash tables to compare across
 #cr = compression rate, percentage of rows of weight matrix to preserve
-def slide_vanilla(in_layer,weight, sdim, num_tables, cr):
+def slide_vanilla(in_layer, weight, sdim, num_tables, cr):
 
     def slidehash(in_layers, vectors, n, sdim):
         # create gaussian matrix
