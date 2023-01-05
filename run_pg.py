@@ -4,7 +4,7 @@ import argparse
 from dataloader import load_extreme_data
 from mpi4py import MPI
 from misc import AverageMeter, Recorder, compute_accuracy_lsh
-from pg_hash2 import PGHash
+from pg_hash import PGHash
 import time
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'

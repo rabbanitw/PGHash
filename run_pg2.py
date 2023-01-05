@@ -10,7 +10,7 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
-def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
+def train(rank, PGHash, optimizer, train_data, test_data, num_labels, num_features, args):
 
     # initialize meters
     top1 = AverageMeter()
@@ -19,7 +19,8 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
     recorder = Recorder('Output', args.name, MPI.COMM_WORLD.Get_size(), rank, hash_type)
 
     # begin training
-    pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels)
+    pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
+             num_features)
 
 
 if __name__ == '__main__':
@@ -27,12 +28,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # add arguments
     parser.add_argument('--name', type=str, default='Test')
-    parser.add_argument('--dataset', type=str, default='Amazon670K')
+    parser.add_argument('--dataset', type=str, default='Delicious200K')
     parser.add_argument('--graph_type', type=str, default='ring')
-    parser.add_argument('--hash_type', type=str, default='slide_avg')
+    parser.add_argument('--hash_type', type=str, default='pg_avg')
     parser.add_argument('--randomSeed', type=int, default=1203)
     parser.add_argument('--lsh', action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument('--sdim', type=int, default=8)
+    parser.add_argument('--sdim', type=int, default=9)
     parser.add_argument('--num_tables', type=int, default=50)
     parser.add_argument('--lr', type=int, default=1e-3)
     parser.add_argument('--cr', type=float, default=0.1)
@@ -96,4 +97,4 @@ if __name__ == '__main__':
 
     # begin training
     print('Beginning training...')
-    train(rank, PGHash, optimizer, train_data, test_data, n_labels, args)
+    train(rank, PGHash, optimizer, train_data, test_data, n_labels, n_features, args)

@@ -50,7 +50,7 @@ def pghash(weights, n, sdim):
     # Apply PGHash to weights.
     hash_table = np.heaviside(pg_gaussian@weights, 0)
 
-    return hash_table, pg_gaussian
+    return pg_gaussian, hash_table
 
 
 def slidehash(vectors, n, sdim):
@@ -93,7 +93,6 @@ def pg_avg(in_layer, pg_gaussian, hash_table):
         :param in_layer: layer input, must be a column-vector
         :param pg_gaussian:
         :param hash_table:
-        :param cr: compression rate, percentage of rows of weight matrix to preserve
         :return:
     '''
 

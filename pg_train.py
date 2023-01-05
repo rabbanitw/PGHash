@@ -21,7 +21,8 @@ def get_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
     return tf.convert_to_tensor(y_true[:, sub_idx], dtype=tf.float32)
 
 
-def pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels):
+def pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
+             num_features):
 
     # parameters
     cur_idx = None
@@ -51,8 +52,14 @@ def pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_
                 lsh_time = 0
 
             for sub_batch in range(args.q):
-                x = x_batch_train[(sub_batch * args.train_bs):((sub_batch + 1) * args.train_bs), :]
-                y = y_batch_train[(sub_batch * args.train_bs):((sub_batch + 1) * args.train_bs), :]
+
+                x = tf.sparse.slice(x_batch_train, start=[sub_batch * args.train_bs, 0],
+                                    size=[args.train_bs, num_features])
+                y = tf.sparse.slice(y_batch_train, start=[sub_batch * args.train_bs, 0],
+                                    size=[args.train_bs, num_labels])
+
+                # x = x_batch_train[(sub_batch * args.train_bs):((sub_batch + 1) * args.train_bs), :]
+                # y = y_batch_train[(sub_batch * args.train_bs):((sub_batch + 1) * args.train_bs), :]
 
                 init_time = time.time()
 
@@ -88,7 +95,7 @@ def pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_
 
                 # log every X batches
                 total_batches += batch
-                if iterations % 10 == 0:
+                if iterations % 5 == 0:
                     print(
                         "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
                         % (rank, iterations, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
@@ -108,4 +115,3 @@ def pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_
         # reset accuracy statistics for next epoch
         top1.reset()
         losses.reset()
-

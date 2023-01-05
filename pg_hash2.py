@@ -124,7 +124,7 @@ class PGHash:
 
         # run LSH to find the most important weights over the entire next Q batches
         for _ in range(self.num_tables):
-            g_mat, ht = pghash(self.final_dense, self.sdim, n)
+            g_mat, ht = pghash(self.final_dense, n, self.sdim)
             ham_dists += pg_avg(in_layer, g_mat, ht)
 
         # pick just the largest differences
