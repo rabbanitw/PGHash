@@ -44,7 +44,7 @@ def pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_
                 # update full model
                 PGHash.update_full_model(model)
                 # compute LSH
-                cur_idx = PGHash.lsh_avg_simple(x_batch_train)
+                cur_idx = PGHash.lsh_avg(x_batch_train)
                 # get new model
                 model = PGHash.get_new_model()
                 lsh_time = time.time() - lsh_init
@@ -57,9 +57,6 @@ def pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_
                                     size=[args.train_bs, num_features])
                 y = tf.sparse.slice(y_batch_train, start=[sub_batch * args.train_bs, 0],
                                     size=[args.train_bs, num_labels])
-
-                # x = x_batch_train[(sub_batch * args.train_bs):((sub_batch + 1) * args.train_bs), :]
-                # y = y_batch_train[(sub_batch * args.train_bs):((sub_batch + 1) * args.train_bs), :]
 
                 init_time = time.time()
 

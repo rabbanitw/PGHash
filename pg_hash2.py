@@ -150,7 +150,7 @@ class PGHash:
         total_in_layer = feature_extractor(data).numpy()
         true_bs = int(total_in_layer.shape[0]/self.q)
         ind_per_batch = int(self.num_c_layers/self.q)
-        ci = np.empty(0)
+        ci = np.empty(0, dtype=int)
 
         for i in range(self.q):
 
@@ -159,14 +159,14 @@ class PGHash:
 
             # run LSH to find the most important weights over the entire next Q batches
             for _ in range(self.num_tables):
-                g_mat, ht = pghash(self.final_dense, self.sdim, n)
+                g_mat, ht = pghash(self.final_dense, n, self.sdim)
                 ham_dists += pg_avg(in_layer, g_mat, ht)
 
             # pick just the largest differences
             avg_ham_dists = -ham_dists / (true_bs * self.num_tables)
 
             # union the indices of each batch
-            ci = np.union1d(np.sort((tf.math.top_k(avg_ham_dists, ind_per_batch)).indices.numpy()), ci)
+            ci = np.union1d(tf.math.top_k(avg_ham_dists, ind_per_batch).indices.numpy(), ci)
         self.ci = ci
 
         # update indices with new current index
