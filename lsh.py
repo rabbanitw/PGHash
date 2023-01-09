@@ -61,7 +61,10 @@ def slidehash(vectors, n, sdim):
     # Apply Slide to weights.
     hash_table = np.heaviside(slide_gaussian@vectors, 0)
 
-    return hash_table, slide_gaussian
+    # convert to base 10
+    hash_table = hash_table.T.dot(1 << np.arange(hash_table.T.shape[-1]))
+
+    return slide_gaussian, hash_table
 
 
 def pg_vanilla(in_layer, weight, sdim, num_tables, cr):
@@ -105,7 +108,7 @@ def pg_avg(in_layer, pg_gaussian, hash_table):
     return np.sum(v.T, axis=0)
 
 
-def slide_vanilla(in_layer, weight, sdim, num_tables, cr):
+def slide_vanilla(in_layer, gaussian, weight_ht):
     '''
         Takes a layer input and determines which weights are cosin (dis)similar via PGHash
         :param in_layer: layer input, must be a column-vector
@@ -116,32 +119,25 @@ def slide_vanilla(in_layer, weight, sdim, num_tables, cr):
         :return: hash tables and ...
     '''
 
-    def slidehash(in_layers, vectors, n, sdim):
-        # create gaussian matrix
-        slide_mat = np.random.normal(size=(sdim, n))
+    # Apply Slide to input vector.
+    transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
+    input_vals = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
 
-        # Apply Slide to input vector.
-        sig1 = np.heaviside(slide_mat@in_layers.T, 0)
+    '''
+        n, cols = weight.shape
+        thresh = int(cols * cr)
 
-        # Apply Slide to weights.
-        sig2 = np.heaviside(slide_mat@vectors, 0)
+        inds = slidehash(in_layer, weight, n, sdim)
+        # Loop over the desired number of tables.
+        for i in range(num_tables-1):
+            if len(inds) <= thresh:
+                return inds
+            inds = np.intersect1d(inds, slidehash(in_layer, weight, n, sdim))
+        return np.sort(inds)
+        '''
 
-        # convert to base 10
-        input_vals = sig1.T.dot(1 << np.arange(sig1.T.shape[-1]))
-        weight_vals = sig2.T.dot(1 << np.arange(sig2.T.shape[-1]))
-
-        return np.concatenate([np.where(weight_vals == i)[0] for i in input_vals])
-
-    n, cols = weight.shape
-    thresh = int(cols * cr)
-
-    inds = slidehash(in_layer, weight, n, sdim)
-    # Loop over the desired number of tables.
-    for i in range(num_tables-1):
-        if len(inds) <= thresh:
-            return inds
-        inds = np.intersect1d(inds, slidehash(in_layer, weight, n, sdim))
-    return np.sort(inds)
+    # map equivalent hashes and return them
+    return np.concatenate([np.where(weight_ht == i)[0] for i in input_vals])
 
 
 def slide_avg(in_layer, weight, sdim, num_tables, cr):
