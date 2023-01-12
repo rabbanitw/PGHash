@@ -419,7 +419,7 @@ class SLIDE(ModelHub):
 
         # return self.gaussian_mats, self.hash_tables
 
-    def lsh(self, data):
+    def lsh(self, data, union=False, num_random_table=3):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -428,46 +428,59 @@ class SLIDE(ModelHub):
         )
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
-        prev_cur_idx = [i for i in range(bs)]
         cur_idx = [i for i in range(bs)]
-        gap_idx = np.ones(bs, dtype=np.int)
 
-
-        for i in range(self.num_tables):
-            cur_gauss = self.gaussian_mats[(i*self.sdim):((i+1)*self.sdim), :]
-            cur_ht = self.hash_tables[i, :]
-            hash_idxs = slide(in_layer, cur_gauss, cur_ht)
-            for j in range(bs):
-
-                # if already filled, then skip
-                if gap_idx[j] == 0:
-                    continue
-
-                if i == 0:
-                    cur_idx[j] = hash_idxs[j]
-                    print(len(cur_idx[j]))
-                else:
-                    cur_idx[j] = np.intersect1d(cur_idx[j], hash_idxs[j])
-                gap_idx[j] = int(self.num_c_layers - len(cur_idx[j]))
-
-                # if we have not filled enough, then randomly select indices from the previous cur_idx to fill the gap
-                # ''''''
-                if gap_idx[j] > 0:
+        if union:
+            table_idx = np.random.choice(self.num_tables, num_random_table, replace=False)
+            for i in range(num_random_table):
+                idx = table_idx[i]
+                cur_gauss = self.gaussian_mats[(idx * self.sdim):((idx + 1) * self.sdim), :]
+                cur_ht = self.hash_tables[idx, :]
+                hash_idxs = slide(in_layer, cur_gauss, cur_ht)
+                for j in range(bs):
                     if i == 0:
-                        prev_dropped_idx = np.setdiff1d(np.arange(self.nl), cur_idx[j])
+                        cur_idx[j] = hash_idxs[j]
                     else:
-                        prev_dropped_idx = np.setdiff1d(prev_cur_idx[j], cur_idx[j])
-                    cur_idx[j] = np.union1d(cur_idx[j], np.random.choice(prev_dropped_idx, gap_idx[j], replace=False))
-                    gap_idx[j] = 0
-                    continue
+                        cur_idx[j] = np.union1d(cur_idx[j], hash_idxs[j])
 
-                prev_cur_idx[j] = cur_idx[j]
+        else:
+            prev_cur_idx = [i for i in range(bs)]
+            gap_idx = -np.ones(bs, dtype=np.int)
 
-                # if X tables is not enough, take a random choice of the leftover (very unlikely)
-                if i == self.num_tables - 1 and gap_idx[j] < 0:
-                    cur_idx[j] = np.random.choice(cur_idx[j], self.num_c_layers)
+            for i in range(self.num_tables):
+                cur_gauss = self.gaussian_mats[(i*self.sdim):((i+1)*self.sdim), :]
+                cur_ht = self.hash_tables[i, :]
+                hash_idxs = slide(in_layer, cur_gauss, cur_ht)
+                for j in range(bs):
 
-            if all(gap_idx == 0):
-                break
+                    # if already filled, then skip
+                    if gap_idx[j] == 0:
+                        continue
+
+                    if i == 0:
+                        cur_idx[j] = hash_idxs[j]
+                    else:
+                        cur_idx[j] = np.intersect1d(cur_idx[j], hash_idxs[j])
+                    gap_idx[j] = int(self.num_c_layers - len(cur_idx[j]))
+
+                    # if we have not filled enough, then randomly select indices from the previous cur_idx to fill the gap
+                    if gap_idx[j] > 0:
+                        if i == 0:
+                            prev_dropped_idx = np.setdiff1d(np.arange(self.nl), cur_idx[j])
+                        else:
+                            prev_dropped_idx = np.setdiff1d(prev_cur_idx[j], cur_idx[j])
+                        cur_idx[j] = np.union1d(cur_idx[j], np.random.choice(prev_dropped_idx, gap_idx[j], replace=False))
+                        gap_idx[j] = 0
+                        continue
+
+                    prev_cur_idx[j] = cur_idx[j]
+
+                    # if X tables is not enough, take a random choice of the leftover (very unlikely)
+                    if i == self.num_tables - 1 and gap_idx[j] < 0:
+                        cur_idx[j] = np.random.choice(cur_idx[j], self.num_c_layers)
+
+                # if all(gap_idx == 0):
+                if all(gap_idx > 0):
+                    break
 
         return cur_idx
