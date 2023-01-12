@@ -1,10 +1,11 @@
 import numpy as np
 import tensorflow as tf
 import time
-from lsh import pg_avg, pg_vanilla, slide_avg, slide_vanilla, pghash, slidehash
+from lsh import pg_avg, slide, slide_vanilla, pghash, slidehash
 from mlp import SparseNeuralNetwork
 from misc import compute_accuracy_lsh
 from mpi4py import MPI
+import copy
 
 
 class ModelHub:
@@ -270,16 +271,16 @@ class PGHash(ModelHub):
         return self.ci
 
 
-class SLIDE(ModelHub):
+class SLIDE_Batch(ModelHub):
 
     def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
                  rank, size, q, influence, i1, i2):
 
-        super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
-                 rank, size, q, influence, i1, i2)
+        self.gaussian_mats = None
+        self.hash_tables = None
 
-        self.gaussian_mats = np.zeros(self.nl)
-        self.hash_tables = np.zeros(self.nl)
+        super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
+                         rank, size, q, influence, i1, i2)
 
     def lsh_get_hash(self):
 
@@ -342,3 +343,131 @@ class SLIDE(ModelHub):
         self.update_model()
 
         return self.ci
+
+    def lsh_union(self, data):
+
+        # get input layer for LSH
+        feature_extractor = tf.keras.Model(
+            inputs=self.model.inputs,
+            outputs=self.model.layers[-3].output,
+        )
+        in_layer = feature_extractor(data).numpy()
+        cur_idx = np.empty(0, dtype=int)
+        prev_cur_idx = np.empty(0, dtype=int)
+
+        for i in range(self.num_tables):
+            cur_gauss = self.gaussian_mats[(i*self.sdim):((i+1)*self.sdim), :]
+            cur_ht = self.hash_tables[i, :]
+            cur_idx = np.union1d(cur_idx, slide_vanilla(in_layer, cur_gauss, cur_ht))
+            gap = len(cur_idx) - self.num_c_layers
+            # if we have not filled enough, then randomly select indices from the previous cur_idx to fill the gap
+            if gap > 0:
+                prev_dropped_idx = np.setdiff1d(cur_idx, prev_cur_idx)
+                cur_idx = np.setdiff1d(cur_idx, np.random.choice(prev_dropped_idx, gap, replace=False))
+                break
+            prev_cur_idx = cur_idx
+
+            # if X tables is not enough to fill
+            if i == self.num_tables - 1 and gap < 0:
+                not_picked = np.setdiff1d(np.arange(self.nl), cur_idx)
+                cur_idx = np.union1d(cur_idx, np.random.choice(not_picked, -gap, replace=False))
+
+        self.ci = cur_idx
+
+        # update indices with new current index
+        self.bias_idx = self.ci + self.bias_start
+
+        # update model
+        self.update_model()
+
+        return self.ci
+
+
+class SLIDE(ModelHub):
+
+    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
+                 rank, size, q, influence, i1, i2):
+
+        self.gaussian_mats = None
+        self.hash_tables = None
+
+        super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
+                         rank, size, q, influence, i1, i2)
+
+    def lsh_get_hash(self):
+
+        # get weights
+        self.get_final_dense()
+        n = self.final_dense.shape[0]
+
+        gaussian_mats = None
+        hash_tables = None
+
+        # determine all the hash tables and gaussian matrices
+        for i in range(self.num_tables):
+            g_mat, ht = slidehash(self.final_dense, n, self.sdim)
+
+            if i == 0:
+                gaussian_mats = g_mat
+                hash_tables = ht
+            else:
+                gaussian_mats = np.vstack((gaussian_mats, g_mat))
+                hash_tables = np.vstack((hash_tables, ht))
+
+        self.gaussian_mats = gaussian_mats
+        self.hash_tables = hash_tables
+
+        # return self.gaussian_mats, self.hash_tables
+
+    def lsh(self, data):
+
+        # get input layer for LSH
+        feature_extractor = tf.keras.Model(
+            inputs=self.model.inputs,
+            outputs=self.model.layers[-3].output,
+        )
+        in_layer = feature_extractor(data).numpy()
+        bs = in_layer.shape[0]
+        prev_cur_idx = [i for i in range(bs)]
+        cur_idx = [i for i in range(bs)]
+        gap_idx = np.ones(bs, dtype=np.int)
+
+
+        for i in range(self.num_tables):
+            cur_gauss = self.gaussian_mats[(i*self.sdim):((i+1)*self.sdim), :]
+            cur_ht = self.hash_tables[i, :]
+            hash_idxs = slide(in_layer, cur_gauss, cur_ht)
+            for j in range(bs):
+
+                # if already filled, then skip
+                if gap_idx[j] == 0:
+                    continue
+
+                if i == 0:
+                    cur_idx[j] = hash_idxs[j]
+                    print(len(cur_idx[j]))
+                else:
+                    cur_idx[j] = np.intersect1d(cur_idx[j], hash_idxs[j])
+                gap_idx[j] = int(self.num_c_layers - len(cur_idx[j]))
+
+                # if we have not filled enough, then randomly select indices from the previous cur_idx to fill the gap
+                # ''''''
+                if gap_idx[j] > 0:
+                    if i == 0:
+                        prev_dropped_idx = np.setdiff1d(np.arange(self.nl), cur_idx[j])
+                    else:
+                        prev_dropped_idx = np.setdiff1d(prev_cur_idx[j], cur_idx[j])
+                    cur_idx[j] = np.union1d(cur_idx[j], np.random.choice(prev_dropped_idx, gap_idx[j], replace=False))
+                    gap_idx[j] = 0
+                    continue
+
+                prev_cur_idx[j] = cur_idx[j]
+
+                # if X tables is not enough, take a random choice of the leftover (very unlikely)
+                if i == self.num_tables - 1 and gap_idx[j] < 0:
+                    cur_idx[j] = np.random.choice(cur_idx[j], self.num_c_layers)
+
+            if all(gap_idx == 0):
+                break
+
+        return cur_idx
