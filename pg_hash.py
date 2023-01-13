@@ -1,11 +1,10 @@
 import numpy as np
 import tensorflow as tf
 import time
-from lsh import pg_avg, pg_vanilla, slide, slide_vanilla, pghash, slidehash
+from lsh import pg_avg, pg_vanilla, slide, pghash, slidehash
 from mlp import SparseNeuralNetwork
 from misc import compute_accuracy_lsh
 from mpi4py import MPI
-import copy
 
 
 class ModelHub:
@@ -223,8 +222,8 @@ class PGHash(ModelHub):
         print('starting lsh')
         # run LSH to find the most important weights over the entire next Q batches
         for _ in range(self.num_tables):
-            g_mat, ht = pghash(self.final_dense, n, self.sdim)
-            ham_dists += pg_vanilla(in_layer, g_mat, ht, ham_dists)
+            g_mat, ht_dict = pghash(self.final_dense, n, self.sdim)
+            ham_dists += pg_vanilla(in_layer, g_mat, ht_dict, ham_dists)
             print('hey')
 
         # pick just the largest differences
@@ -307,125 +306,13 @@ class PGHash(ModelHub):
         return self.ci
 
 
-class SLIDE_Batch(ModelHub):
-
-    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
-                 rank, size, q, influence, i1, i2):
-
-        self.gaussian_mats = None
-        self.hash_tables = None
-
-        super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
-                         rank, size, q, influence, i1, i2)
-
-    def lsh_get_hash(self):
-
-        # get weights
-        self.get_final_dense()
-        n = self.final_dense.shape[0]
-
-        gaussian_mats = None
-        hash_tables = None
-
-        # determine all the hash tables and gaussian matrices
-        for i in range(self.num_tables):
-            g_mat, ht = slidehash(self.final_dense, n, self.sdim)
-
-            if i == 0:
-                gaussian_mats = g_mat
-                hash_tables = ht
-            else:
-                gaussian_mats = np.vstack((gaussian_mats, g_mat))
-                hash_tables = np.vstack((hash_tables, ht))
-
-        self.gaussian_mats = gaussian_mats
-        self.hash_tables = hash_tables
-
-        # return self.gaussian_mats, self.hash_tables
-
-    def lsh(self, data):
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=self.model.inputs,
-            outputs=self.model.layers[-3].output,
-        )
-        in_layer = feature_extractor(data).numpy()
-        cur_idx = np.arange(self.nl)
-        prev_cur_idx = np.arange(self.nl)
-
-        for i in range(self.num_tables):
-            cur_gauss = self.gaussian_mats[(i*self.sdim):((i+1)*self.sdim), :]
-            cur_ht = self.hash_tables[i, :]
-            cur_idx = np.intersect1d(cur_idx, slide_vanilla(in_layer, cur_gauss, cur_ht))
-            gap = self.num_c_layers - len(cur_idx)
-            # if we have not filled enough, then randomly select indices from the previous cur_idx to fill the gap
-            if gap > 0:
-                prev_dropped_idx = np.setdiff1d(prev_cur_idx, cur_idx)
-                cur_idx = np.union1d(cur_idx, np.random.choice(prev_dropped_idx, gap, replace=False))
-                break
-            prev_cur_idx = cur_idx
-
-            # if X tables is not enough, take a random choice of the leftover (very unlikely)
-            if i == self.num_tables - 1 and gap < 0:
-                cur_idx = np.random.choice(cur_idx, self.num_c_layers)
-
-        self.ci = cur_idx
-
-        # update indices with new current index
-        self.bias_idx = self.ci + self.bias_start
-
-        # update model
-        self.update_model()
-
-        return self.ci
-
-    def lsh_union(self, data):
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=self.model.inputs,
-            outputs=self.model.layers[-3].output,
-        )
-        in_layer = feature_extractor(data).numpy()
-        cur_idx = np.empty(0, dtype=int)
-        prev_cur_idx = np.empty(0, dtype=int)
-
-        for i in range(self.num_tables):
-            cur_gauss = self.gaussian_mats[(i*self.sdim):((i+1)*self.sdim), :]
-            cur_ht = self.hash_tables[i, :]
-            cur_idx = np.union1d(cur_idx, slide_vanilla(in_layer, cur_gauss, cur_ht))
-            gap = len(cur_idx) - self.num_c_layers
-            # if we have not filled enough, then randomly select indices from the previous cur_idx to fill the gap
-            if gap > 0:
-                prev_dropped_idx = np.setdiff1d(cur_idx, prev_cur_idx)
-                cur_idx = np.setdiff1d(cur_idx, np.random.choice(prev_dropped_idx, gap, replace=False))
-                break
-            prev_cur_idx = cur_idx
-
-            # if X tables is not enough to fill
-            if i == self.num_tables - 1 and gap < 0:
-                not_picked = np.setdiff1d(np.arange(self.nl), cur_idx)
-                cur_idx = np.union1d(cur_idx, np.random.choice(not_picked, -gap, replace=False))
-
-        self.ci = cur_idx
-
-        # update indices with new current index
-        self.bias_idx = self.ci + self.bias_start
-
-        # update model
-        self.update_model()
-
-        return self.ci
-
-
 class SLIDE(ModelHub):
 
     def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
                  rank, size, q, influence, i1, i2):
 
         self.gaussian_mats = None
-        self.hash_tables = None
+        self.hash_dicts = []
 
         super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
                          rank, size, q, influence, i1, i2)
@@ -437,23 +324,19 @@ class SLIDE(ModelHub):
         n = self.final_dense.shape[0]
 
         gaussian_mats = None
-        hash_tables = None
 
         # determine all the hash tables and gaussian matrices
         for i in range(self.num_tables):
-            g_mat, ht = slidehash(self.final_dense, n, self.sdim)
+            g_mat, ht_dict = slidehash(self.final_dense, n, self.sdim)
 
             if i == 0:
                 gaussian_mats = g_mat
-                hash_tables = ht
             else:
                 gaussian_mats = np.vstack((gaussian_mats, g_mat))
-                hash_tables = np.vstack((hash_tables, ht))
+
+            self.hash_dicts.append(ht_dict)
 
         self.gaussian_mats = gaussian_mats
-        self.hash_tables = hash_tables
-
-        # return self.gaussian_mats, self.hash_tables
 
     def lsh(self, data, union=True, num_random_table=3):
 
@@ -471,8 +354,8 @@ class SLIDE(ModelHub):
             for i in range(num_random_table):
                 idx = table_idx[i]
                 cur_gauss = self.gaussian_mats[(idx * self.sdim):((idx + 1) * self.sdim), :]
-                cur_ht = self.hash_tables[idx, :]
-                hash_idxs = slide(in_layer, cur_gauss, cur_ht)
+                cur_ht_dict = self.hash_dicts[idx]
+                hash_idxs = slide(in_layer, cur_gauss, cur_ht_dict)
                 for j in range(bs):
                     if i == 0:
                         cur_idx[j] = hash_idxs[j]
@@ -485,8 +368,8 @@ class SLIDE(ModelHub):
 
             for i in range(self.num_tables):
                 cur_gauss = self.gaussian_mats[(i*self.sdim):((i+1)*self.sdim), :]
-                cur_ht = self.hash_tables[i, :]
-                hash_idxs = slide(in_layer, cur_gauss, cur_ht)
+                cur_ht_dict = self.hash_dicts[i]
+                hash_idxs = slide(in_layer, cur_gauss, cur_ht_dict)
                 for j in range(bs):
 
                     # if already filled, then skip
