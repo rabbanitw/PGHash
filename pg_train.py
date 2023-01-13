@@ -154,18 +154,14 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
     # get model
     model = Method.get_new_model(returnModel=True)
 
-
     for epoch in range(args.epochs):
         print("\nStart of epoch %d" % (epoch,))
 
         # iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
-            #'''
             if args.lsh and step % args.steps_per_lsh == 0:
                 lsh_init = time.time()
-                # update full model
-                Method.update_full_model(model)
                 # compute LSH hash tables
                 Method.lsh_get_hash()
                 # compute best neurons for this batch of data via SLIDE
@@ -173,8 +169,6 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                 lsh_time = time.time() - lsh_init
             else:
                 lsh_init = time.time()
-                # update model
-                Method.update_full_model(model)
                 # compute best neurons for all samples in the batch of data via SLIDE
                 batch_idxs = Method.lsh(x_batch_train)
                 lsh_time = time.time() - lsh_init
@@ -189,6 +183,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             y_true, pred_mask = slide_partial_label(y_batch_train, batch_idxs, batch, num_labels)
 
             # perform gradient update
+            #with tf.device('/CPU'):
             with tf.GradientTape() as tape:
                 y_pred = model(x_batch_train, training=True)
                 y_pred = tf.math.multiply(pred_mask, y_pred)
@@ -211,6 +206,9 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                              loss_value.numpy(), top1.avg, losses.avg)
             recorder.save_to_file()
 
+            # update model and reset neurons that were incorrectly backpropped
+            model = Method.update(model, np.unique(np.concatenate(batch_idxs)))
+
             # log every X batches
             total_batches += batch
             acc1_metric.reset_state()
@@ -223,7 +221,6 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             # compute test accuracy every X steps
             if step % args.steps_per_test == 0:
                 if rank == 0:
-                    Method.update_full_model(model)
                     test_acc = Method.test_full_model(test_data, test_top1)
                     print("Step %d: Top 1 Test Accuracy %.4f" % (step, test_acc))
                     recorder.add_testacc(test_acc)

@@ -485,3 +485,22 @@ class SLIDE(ModelHub):
                     break
 
         return cur_idx
+
+    def update(self, model, update_indices):
+        # update full model before averaging
+        weights = model.get_weights()
+        w = weights[-2]
+        b = weights[-1]
+        self.get_final_dense()
+        self.final_dense[:, update_indices] = w[:, update_indices]
+        self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
+        self.full_model[update_indices + self.bias_start] = b[update_indices]
+        # update the first part of the model as well!
+        partial_model = self.flatten_weights(weights[:-2])
+        self.full_model[:self.weight_idx] = partial_model
+
+        # set new weights
+        new_weights = self.unflatten_weights(self.full_model)
+        self.model.set_weights(new_weights)
+
+        return self.model
