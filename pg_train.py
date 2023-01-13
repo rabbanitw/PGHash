@@ -189,6 +189,8 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                 y_pred = tf.math.multiply(pred_mask, y_pred)
                 loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
             grads = tape.gradient(loss_value, model.trainable_weights)
+            # print(grads.shape)
+            # print(grads)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
             # compute accuracy (top 1) and loss for the minibatch
