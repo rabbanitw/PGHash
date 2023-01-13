@@ -72,6 +72,28 @@ def slide_vanilla(in_layer, gaussian, weight_ht):
     return np.concatenate([np.where(weight_ht == i)[0] for i in input_vals])
 
 
+def pg_vanilla(in_layer, gaussian, weight_ht, idx_count):
+    '''
+        Takes a layer input and determines which weights are cosin (dis)similar via PGHash
+        :param in_layer: layer input, must be a column-vector
+        :param weight: weight tensor of current layer
+        :param sdim: length of hash signature. must divide length of in_layer/# of weight rows
+        :param num_tables: how many hash tables to compare across
+        :param cr: compression rate, percentage of rows of weight matrix to preserve
+        :return: hash tables and ...
+    '''
+
+    # Apply Slide to input vector.
+    transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
+    input_vals = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
+
+    # map equivalent hashes and return the adjusted
+    unique_idx, count = np.unique(np.concatenate([np.where(weight_ht == i)[0] for i in input_vals]), return_counts=True)
+    idx_count[unique_idx] += count
+
+    return idx_count
+
+
 def slide(in_layer, gaussian, weight_ht):
     '''
         Takes a layer input and determines which weights are cosin (dis)similar via PGHash

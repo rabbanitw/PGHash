@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import time
-from lsh import pg_avg, slide, slide_vanilla, pghash, slidehash
+from lsh import pg_avg, pg_vanilla, slide, slide_vanilla, pghash, slidehash
 from mlp import SparseNeuralNetwork
 from misc import compute_accuracy_lsh
 from mpi4py import MPI
@@ -203,6 +203,41 @@ class PGHash(ModelHub):
                  rank, size, q, influence, i1, i2):
         super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
                  rank, size, q, influence, i1, i2)
+
+    def lsh_initial(self, data):
+
+        # get weights
+        self.get_final_dense()
+        n = self.final_dense.shape[0]
+
+        # get input layer for LSH
+        feature_extractor = tf.keras.Model(
+            inputs=self.model.inputs,
+            outputs=self.model.layers[-3].output,
+        )
+        in_layer = feature_extractor(data).numpy()
+        bs = in_layer.shape[0]
+
+        ham_dists = np.zeros(self.nl)
+
+        print('starting lsh')
+        # run LSH to find the most important weights over the entire next Q batches
+        for _ in range(self.num_tables):
+            g_mat, ht = pghash(self.final_dense, n, self.sdim)
+            ham_dists += pg_vanilla(in_layer, g_mat, ht, ham_dists)
+            print('hey')
+
+        # pick just the largest differences
+        avg_ham_dists = -ham_dists / (bs * self.num_tables)
+
+        # union the indices of each batch
+        self.ci = np.sort(tf.math.top_k(avg_ham_dists, self.num_c_layers).indices.numpy())
+
+        # update indices with new current index
+        self.bias_idx = self.ci + self.bias_start
+
+        return self.ci
+
 
     def lsh_avg_simple(self, data):
 

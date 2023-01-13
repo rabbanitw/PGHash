@@ -1,3 +1,5 @@
+import copy
+
 import tensorflow as tf
 import numpy as np
 import time
@@ -71,7 +73,7 @@ def pg_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_
                 # update full model
                 Method.update_full_model(model)
                 # compute LSH
-                cur_idx = Method.lsh_avg(x_batch_train)
+                cur_idx = Method.lsh_initial(x_batch_train)
                 # get new model
                 model = Method.get_new_model()
                 lsh_time = time.time() - lsh_init
@@ -147,6 +149,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
     total_batches = 0
     test_acc = np.NaN
     acc1_metric = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
+    full_idx = np.arange(num_labels)
 
     # update indices with new current index
     Method.ci = np.arange(num_labels)
@@ -166,11 +169,15 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                 Method.lsh_get_hash()
                 # compute best neurons for this batch of data via SLIDE
                 batch_idxs = Method.lsh(x_batch_train)
+                concat_idx = np.concatenate(batch_idxs)
+                non_active_idx = np.setdiff1d(full_idx, concat_idx)
                 lsh_time = time.time() - lsh_init
             else:
                 lsh_init = time.time()
                 # compute best neurons for all samples in the batch of data via SLIDE
                 batch_idxs = Method.lsh(x_batch_train)
+                concat_idx = np.concatenate(batch_idxs)
+                non_active_idx = np.setdiff1d(full_idx, concat_idx)
                 lsh_time = time.time() - lsh_init
 
             init_time = time.time()
@@ -182,15 +189,21 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             batch = x_batch_train.get_shape()[0]
             y_true, pred_mask = slide_partial_label(y_batch_train, batch_idxs, batch, num_labels)
 
+            # set non-active weights to zero so their gradients are small (~will try to become fully accurate later)
+            final_layer = model.layers[-1].get_weights()
+            final_layer[0][:, non_active_idx] = 0
+            final_layer[1][non_active_idx] = 0
+            model.layers[-1].set_weights(final_layer)
+
             # perform gradient update
-            #with tf.device('/CPU'):
             with tf.GradientTape() as tape:
                 y_pred = model(x_batch_train, training=True)
                 y_pred = tf.math.multiply(pred_mask, y_pred)
                 loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+
+            # apply backpropagation after setting non-active weights to zero
             grads = tape.gradient(loss_value, model.trainable_weights)
-            # print(grads.shape)
-            # print(grads)
+            # update weights
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
             # compute accuracy (top 1) and loss for the minibatch
@@ -209,7 +222,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             recorder.save_to_file()
 
             # update model and reset neurons that were incorrectly backpropped
-            model = Method.update(model, np.unique(np.concatenate(batch_idxs)))
+            model = Method.update(model, np.unique(concat_idx))
 
             # log every X batches
             total_batches += batch
