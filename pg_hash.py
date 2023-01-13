@@ -145,21 +145,6 @@ class ModelHub:
         if returnModel:
             return self.model
 
-    def test_full_model(self, test_data, acc_meter):
-
-        self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
-        self.layer_shapes, self.layer_sizes = self.get_model_architecture()
-        unflatten_model = self.unflatten_weights(self.full_model)
-        self.model.set_weights(unflatten_model)
-        label_idx = np.arange(self.nl)
-        for (x_batch_test, y_batch_test) in test_data:
-            test_batch = x_batch_test.get_shape()[0]
-            y_pred_test = self.model(x_batch_test, training=False)
-            test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
-            acc_meter.update(test_acc1, test_batch)
-        self.get_new_model(returnModel=False)
-        return acc_meter.avg
-
     def average(self, model):
 
         self.update_full_model(model)
@@ -194,6 +179,22 @@ class ModelHub:
                 # decrease iteration by one in order to run another one update and average step (I2 communication)
                 self.iter -= 1
         return model, comm_time
+
+    def test_full_model(self, test_data, acc_meter):
+
+        self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
+        self.layer_shapes, self.layer_sizes = self.get_model_architecture()
+        unflatten_model = self.unflatten_weights(self.full_model)
+        self.model.set_weights(unflatten_model)
+        label_idx = np.arange(self.nl)
+        with tf.device('/CPU'):
+            for (x_batch_test, y_batch_test) in test_data:
+                test_batch = x_batch_test.get_shape()[0]
+                y_pred_test = self.model(x_batch_test, training=False)
+                test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
+                acc_meter.update(test_acc1, test_batch)
+        self.get_new_model(returnModel=False)
+        return acc_meter.avg
 
 
 class PGHash(ModelHub):
@@ -419,7 +420,7 @@ class SLIDE(ModelHub):
 
         # return self.gaussian_mats, self.hash_tables
 
-    def lsh(self, data, union=False, num_random_table=3):
+    def lsh(self, data, union=True, num_random_table=3):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(

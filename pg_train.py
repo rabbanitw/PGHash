@@ -2,7 +2,16 @@ import tensorflow as tf
 import numpy as np
 import time
 from misc import compute_accuracy_lsh
+import resource
+import os
+import datetime
 
+
+def get_memory(filename):
+    mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    with open(filename, 'a') as f:
+        # Dump timestamp, PID and amount of RAM.
+        f.write('{} {} {}\n'.format(datetime.datetime.now(), os.getpid(), mem))
 
 def get_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
     '''
@@ -145,11 +154,18 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
     # get model
     model = Method.get_new_model(returnModel=True)
 
+    fname = 'r{}.log'.format(rank)
+    if os.path.exists(fname):
+        os.remove(fname)
+
+
     for epoch in range(args.epochs):
         print("\nStart of epoch %d" % (epoch,))
 
         # iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
+
+            get_memory(fname)
 
             #'''
             if args.lsh and step % args.steps_per_lsh == 0:
@@ -169,6 +185,8 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                 batch_idxs = Method.lsh(x_batch_train)
                 lsh_time = time.time() - lsh_init
 
+            get_memory(fname)
+
             init_time = time.time()
 
             # communicate models amongst devices
@@ -185,6 +203,8 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                 loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
             grads = tape.gradient(loss_value, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
+
+            get_memory(fname)
 
             # compute accuracy (top 1) and loss for the minibatch
             rec_init = time.time()
@@ -211,13 +231,23 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                 )
 
             # compute test accuracy every X steps
-            if (step+1) % args.steps_per_test == 0:
+            if step % args.steps_per_test == 0:
                 if rank == 0:
                     Method.update_full_model(model)
                     test_acc = Method.test_full_model(test_data, test_top1)
+
+                    #for (x_batch_test, y_batch_test) in test_data:
+                    #    with tf.GradientTape() as tape:
+                    #        y_pred = model(x_batch_train)
+                    # model.compile(optimizer="Adam", metrics=tf.keras.metrics.TopKCategoricalAccuracy(k=1))
+                    #with tf.device('/CPU'):
+                    #    for (x_batch_test, y_batch_test) in test_data:
+                    #        predictions = model(x_batch_test)
                     print("Step %d: Top 1 Test Accuracy %.4f" % (step, test_acc))
                     recorder.add_testacc(test_acc)
                     test_top1.reset()
+
+            get_memory(fname)
 
         # reset accuracy statistics for next epoch
         top1.reset()
