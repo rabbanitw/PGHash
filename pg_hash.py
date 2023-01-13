@@ -219,12 +219,10 @@ class PGHash(ModelHub):
 
         ham_dists = np.zeros(self.nl)
 
-        print('starting lsh')
         # run LSH to find the most important weights over the entire next Q batches
         for _ in range(self.num_tables):
             g_mat, ht_dict = pghash(self.final_dense, n, self.sdim)
             ham_dists += pg_vanilla(in_layer, g_mat, ht_dict, ham_dists)
-            print('hey')
 
         # pick just the largest differences
         avg_ham_dists = -ham_dists / (bs * self.num_tables)
