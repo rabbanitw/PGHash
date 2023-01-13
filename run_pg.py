@@ -43,10 +43,10 @@ if __name__ == '__main__':
     parser.add_argument('--train_bs', type=int, default=128)
     parser.add_argument('--test_bs', type=int, default=2048)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
-    parser.add_argument('--steps_per_test', type=int, default=25)
+    parser.add_argument('--steps_per_test', type=int, default=100)
     parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
-    parser.add_argument('--q', type=int, default=10)
+    parser.add_argument('--q', type=int, default=50)
 
     # parse the argument
     args = parser.parse_args()

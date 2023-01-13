@@ -126,7 +126,7 @@ def pg_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_
                     )
 
                 # compute test accuracy every X steps
-                if iterations+1 % args.steps_per_test == 0:
+                if iterations % args.steps_per_test == 0:
                     if rank == 0:
                         Method.update_full_model(model)
                         test_acc = Method.test_full_model(test_data, test_top1)
