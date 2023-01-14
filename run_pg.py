@@ -16,7 +16,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, num_featur
     top1 = AverageMeter()
     test_top1 = AverageMeter()
     losses = AverageMeter()
-    recorder = Recorder('Output', args.name, MPI.COMM_WORLD.Get_size(), rank, hash_type)
+    recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
 
     # begin training
     if method == 'PGHash':
@@ -32,10 +32,9 @@ if __name__ == '__main__':
     # add arguments
     parser.add_argument('--name', type=str, default='Test')
     parser.add_argument('--dataset', type=str, default='Delicious200K')
-    parser.add_argument('--graph_type', type=str, default='ring')
+    parser.add_argument('--graph_type', type=str, default='fully_connected')
     parser.add_argument('--hash_type', type=str, default='pg_avg')
     parser.add_argument('--randomSeed', type=int, default=1203)
-    parser.add_argument('--lsh', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--sdim', type=int, default=9)
     parser.add_argument('--num_tables', type=int, default=50)
     parser.add_argument('--lr', type=int, default=1e-3)
@@ -64,7 +63,6 @@ if __name__ == '__main__':
     sdim = args.sdim
     num_tables = args.num_tables
     cr = args.cr
-    lsh = args.lsh
     hash_type = args.hash_type
     steps_per_lsh = args.steps_per_lsh
 

@@ -49,7 +49,7 @@ class AverageMeter(object):
 
 
 class Recorder(object):
-    def __init__(self, folderName, name, size, rank, hash_type):
+    def __init__(self, folderName, size, rank, args):
         self.record_epoch_times = list()
         self.record_comp_times = list()
         self.record_comm_times = list()
@@ -60,9 +60,11 @@ class Recorder(object):
         self.record_avg_losses = list()
         self.record_avg_training_acc1 = list()
         self.rank = rank
-        self.saveFolderName = folderName + '/' + name + '-' + hash_type + '-' + str(size) + 'workers-'
+        self.saveFolderName = folderName + '/' + args.name + '-' + args.hash_type + '-' + str(size) + 'workers-'
         if rank == 0 and not os.path.isdir(self.saveFolderName):
             os.mkdir(self.saveFolderName)
+            with open(self.saveFolderName + '/ExpDescription', 'w') as f:
+                f.write(str(args) + '\n')
 
     def get_saveFolder(self):
         return self.saveFolderName
