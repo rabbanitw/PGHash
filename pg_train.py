@@ -67,6 +67,8 @@ def pg_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_
         # iterate over the batches of the dataset.
         for (x_batch_train, y_batch_train) in train_data:
 
+            batches_per_q = np.ceil(x_batch_train.shape[0] / args.train_bs).astype(np.int32)
+
             lsh_init = time.time()
             # update full model
             Method.update_full_model(model)
@@ -76,7 +78,7 @@ def pg_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_
             model = Method.get_new_model()
             lsh_time = time.time() - lsh_init
 
-            for sub_batch in range(args.q):
+            for sub_batch in range(batches_per_q):
 
                 # compute test accuracy every X steps
                 if iterations % args.steps_per_test == 0 or iterations == 2:

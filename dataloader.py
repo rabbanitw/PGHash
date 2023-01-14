@@ -35,10 +35,13 @@ def load_extreme_data(rank, size, train_bs, test_bs, train_data_path, test_data_
 def partition_sparse_dataset(data_array, rank, size, partition_type='Simple'):
     if partition_type == 'Simple':
         r, c = data_array.shape
-        start_idx = rank*int(r/size)
-        end_idx = (rank+1)*int(r/size)
-        if rank == size - 1:
-            end_idx = r
+        val, rem = divmod(r, size)
+        if rank < rem:
+            start_idx = rank*val + rank
+            end_idx = (rank+1)*val + rank + 1
+        else:
+            start_idx = rank * val + rem
+            end_idx = (rank + 1) * val + rem
         worker_data = data_array[start_idx:end_idx, :]
         return worker_data
 

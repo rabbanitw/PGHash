@@ -107,6 +107,7 @@ if __name__ == '__main__':
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
     layer_shapes, layer_sizes = Method.get_model_architecture()
 
+    MPI.COMM_WORLD.Barrier()
     # begin training
     print('Beginning training...')
     train(rank, Method, optimizer, train_data, test_data, n_labels, n_features, args, method)
