@@ -1,7 +1,5 @@
-import copy
-
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 import time
 from misc import compute_accuracy_lsh
 import resource

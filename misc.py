@@ -60,7 +60,7 @@ class Recorder(object):
         self.record_avg_losses = list()
         self.record_avg_training_acc1 = list()
         self.rank = rank
-        self.saveFolderName = folderName + '/' + args.name + '-' + args.hash_type + '-' + str(size) + 'workers-'
+        self.saveFolderName = folderName + '/' + args.name + '-' + args.hash_type + '-' + str(size) + 'workers'
         if rank == 0 and not os.path.isdir(self.saveFolderName):
             os.mkdir(self.saveFolderName)
             with open(self.saveFolderName + '/ExpDescription', 'w') as f:

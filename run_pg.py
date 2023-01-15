@@ -1,5 +1,5 @@
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 import argparse
 from dataloader import load_extreme_data
 from mpi4py import MPI
@@ -56,8 +56,7 @@ if __name__ == '__main__':
 
     # set random seed
     randomSeed = args.randomSeed
-    tf.random.set_seed(randomSeed + rank)
-    np.random.seed(randomSeed)
+    tf.keras.utils.set_random_seed(randomSeed)
 
     # hashing parameters
     sdim = args.sdim
