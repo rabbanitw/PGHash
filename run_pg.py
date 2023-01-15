@@ -18,12 +18,13 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, num_featur
     losses = AverageMeter()
     recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
 
-    # begin training
-    if method == 'PGHash':
-        pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
-             num_features)
-    elif method == 'SLIDE':
-        slide_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels)
+    with tf.device('/CPU:0'):
+        # begin training
+        if method == 'PGHash':
+            pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
+                 num_features)
+        elif method == 'SLIDE':
+            slide_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels)
 
 
 if __name__ == '__main__':
