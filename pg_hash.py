@@ -186,12 +186,11 @@ class ModelHub:
         unflatten_model = self.unflatten_weights(self.full_model)
         self.model.set_weights(unflatten_model)
         label_idx = np.arange(self.nl)
-        with tf.device('/CPU'):
-            for (x_batch_test, y_batch_test) in test_data:
-                test_batch = x_batch_test.get_shape()[0]
-                y_pred_test = self.model(x_batch_test, training=False)
-                test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
-                acc_meter.update(test_acc1, test_batch)
+        for (x_batch_test, y_batch_test) in test_data:
+            test_batch = x_batch_test.get_shape()[0]
+            y_pred_test = self.model(x_batch_test, training=False)
+            test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
+            acc_meter.update(test_acc1, test_batch)
         self.get_new_model(returnModel=False)
         return acc_meter.avg
 
