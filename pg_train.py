@@ -267,10 +267,9 @@ def regular_train(rank, Method, optimizer, train_data, test_data, losses, top1, 
             if step % args.steps_per_test == 0 or step == 2:
                 if rank == 0:
                     for (x_batch_test, y_batch_test) in test_data:
-                        test_batch = x_batch_test.get_shape()[0]
                         y_pred_test = model(x_batch_test, training=False)
                         test_acc1.update_state(y_pred_test, tf.sparse.to_dense(y_batch_test))
-                        test_acc = acc1_metric.result().numpy()
+                        test_acc = test_acc1.result().numpy()
                     print("Step %d: Top 1 Test Accuracy %.4f" % (step-1, test_acc))
                     recorder.add_testacc(test_acc)
                     test_acc1.reset_state()
