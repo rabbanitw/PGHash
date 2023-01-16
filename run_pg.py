@@ -113,8 +113,8 @@ if __name__ == '__main__':
             print('ERROR: No Method Selected')
 
         # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, epsilon=1e-8)
-        lr_decayed_fn = tf.keras.optimizers.schedules.CosineDecay(args.lr, 1000, alpha=0.1, name=None)
-        optimizer = tf.keras.optimizers.experimental.AdamW(learning_rate=lr_decayed_fn, epsilon=1e-8, weight_decay=4e-5)
+        # lr_decayed_fn = tf.keras.optimizers.schedules.CosineDecay(args.lr, 1000, alpha=0.1, name=None)
+        optimizer = tf.keras.optimizers.experimental.AdamW(learning_rate=args.lr, epsilon=1e-8, weight_decay=4e-5)
         layer_shapes, layer_sizes = Method.get_model_architecture()
 
         MPI.COMM_WORLD.Barrier()
