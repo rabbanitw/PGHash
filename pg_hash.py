@@ -36,7 +36,7 @@ class ModelHub:
 
         # initialize the start of the compressed network weights and the total number of compressed labels
         self.num_c_layers = int(self.cr * self.nl)
-        self.weight_idx = (self.nf * self.hls) + self.hls + (4 * self.hls)
+        self.weight_idx = (self.nf * self.hls) + self.hls # + (4 * self.hls)
 
         # initialize model
         worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
