@@ -29,7 +29,9 @@ def get_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
     for i in true_idx:
         y_true[i[0], i[1]] = 1
     y_true = y_true[:, sub_idx]
-    y_true = y_true / np.count_nonzero(y_true, axis=1).reshape(batch_size, 1)
+    nz = np.count_nonzero(y_true, axis=1).reshape(batch_size, 1)
+    nz[nz == 0] = 1
+    y_true = y_true / nz
     return tf.convert_to_tensor(y_true, dtype=tf.float32)
 
 
