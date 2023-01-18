@@ -10,7 +10,7 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
-def train(rank, PGHash, optimizer, train_data, test_data, num_labels, num_features, args, method):
+def train(rank, size, PGHash, optimizer, train_data, test_data, num_labels, num_features, args, method):
 
     # initialize meters
     top1 = AverageMeter()
@@ -20,7 +20,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, num_featur
 
     # begin training
     if method == 'PGHash':
-        pg_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
+        pg_train(rank, size, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
              num_features)
     elif method == 'Regular':
         regular_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, recorder, args, num_labels)
@@ -121,4 +121,4 @@ if __name__ == '__main__':
         MPI.COMM_WORLD.Barrier()
         # begin training
         print('Beginning training...')
-        train(rank, Method, optimizer, train_data, test_data, n_labels, n_features, args, method)
+        train(rank, size, Method, optimizer, train_data, test_data, n_labels, n_features, args, method)
