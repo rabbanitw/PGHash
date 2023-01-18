@@ -48,24 +48,6 @@ def slidehash(vectors, n, sdim):
     return slide_gaussian, hash_dict
 
 
-def pg_avg(in_layer, pg_gaussian, hash_table):
-    '''
-        Takes a layer input and determines which weights are cosin (dis)similar via PGHash
-        :param in_layer: layer input, must be a column-vector
-        :param pg_gaussian:
-        :param hash_table:
-        :return:
-    '''
-
-    # Apply PGHash to input data.
-    data_hash = np.heaviside(pg_gaussian @ in_layer.T, 0)
-
-    # Compute Hamming Distance
-    v = sn.DistanceMetric.get_metric("hamming").pairwise(hash_table.T, data_hash.T) * hash_table.T.shape[-1]
-
-    return np.sum(v.T, axis=0)
-
-
 def pg_vanilla(in_layer, gaussian, weight_ht_dict, idx_count):
     '''
         Takes a layer input and determines which weights are cosin (dis)similar via PGHash
@@ -109,6 +91,16 @@ def slide(in_layer, gaussian, weight_ht_dict):
 
 
 '''
+def pg_avg(in_layer, pg_gaussian, hash_table):
+
+    # Apply PGHash to input data.
+    data_hash = np.heaviside(pg_gaussian @ in_layer.T, 0)
+
+    # Compute Hamming Distance
+    v = sn.DistanceMetric.get_metric("hamming").pairwise(hash_table.T, data_hash.T) * hash_table.T.shape[-1]
+
+    return np.sum(v.T, axis=0)
+
 def slide_vanilla(in_layer, gaussian, weight_ht):
 
     # Apply Slide to input vector.

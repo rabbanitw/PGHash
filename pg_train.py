@@ -5,7 +5,6 @@ from misc import compute_accuracy_lsh
 import resource
 import os
 import datetime
-from dataloader import load_extreme_data
 
 
 def get_memory(filename):
@@ -52,13 +51,14 @@ def slide_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
     return tf.sparse.to_dense(sparse_y), tf.convert_to_tensor(mask, dtype=tf.float32)
 
 
-def pg_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
+def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
              num_features):
 
     # parameters
     total_batches = 0
     iterations = 1
     test_acc = np.NaN
+    comm_time = 0
 
     # get model
     model = Method.return_model()
@@ -79,6 +79,8 @@ def pg_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_
             Method.update_full_model(model)
             # compute LSH
             cur_idx = Method.lsh_initial(x_batch_train)
+            # send indices to root (server)
+            Method.exchange_idx()
             # get new model
             model = Method.get_new_model()
             lsh_time = time.time() - lsh_init
@@ -101,8 +103,9 @@ def pg_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_
 
                 init_time = time.time()
 
-                # communicate models amongst devices
-                model, comm_time = Method.communicate(model)
+                # communicate models amongst devices (if multiple devices are present)
+                if size > 1:
+                    model, comm_time = Method.communicate(model)
 
                 # transform sparse label to dense sub-label
                 batch = x.get_shape()[0]
@@ -135,8 +138,9 @@ def pg_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_
                 total_batches += batch
                 if iterations % 5 == 0:
                     print(
-                        "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
-                        % (rank, iterations, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
+                        "(Rank %d) Step %d: Epoch Time %f, Comm Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, "
+                        "[%d Total Samples]" % (rank, iterations, (comp_time + comm_time), comm_time,
+                                                loss_value.numpy(), acc1, total_batches)
                     )
 
                 iterations += 1
@@ -196,9 +200,6 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
 
             init_time = time.time()
 
-            # communicate models amongst devices
-            model, comm_time = Method.communicate(model)
-
             # transform sparse label to dense sub-label
             batch = x_batch_train.get_shape()[0]
             y_true, pred_mask = slide_partial_label(y_batch_train, batch_idxs, batch, num_labels)
@@ -231,10 +232,10 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             acc1 = acc1_metric.result().numpy()
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
-            comp_time = (time.time() - init_time) - (record_time + comm_time)
+            comp_time = (time.time() - init_time) - record_time
 
             # store and save accuracy and loss values
-            recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc,
+            recorder.add_new(comp_time, comp_time, 0, lsh_time, acc1, test_acc,
                              loss_value.numpy(), top1.avg, losses.avg)
             recorder.save_to_file()
 
@@ -247,7 +248,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             if step % 5 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
-                    % (rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
+                    % (rank, step, comp_time, loss_value.numpy(), acc1, total_batches)
                 )
 
         # reset accuracy statistics for next epoch
