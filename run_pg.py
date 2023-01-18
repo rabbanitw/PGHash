@@ -1,4 +1,3 @@
-import numpy as np
 import tensorflow as tf
 import argparse
 from dataloader import load_extreme_data
@@ -35,7 +34,7 @@ if __name__ == '__main__':
     parser.add_argument('--name', type=str, default='Test')
     parser.add_argument('--dataset', type=str, default='Delicious200K')
     parser.add_argument('--graph_type', type=str, default='fully_connected')
-    parser.add_argument('--hash_type', type=str, default='pg_avg')
+    parser.add_argument('--hash_type', type=str, default='pghash')
     parser.add_argument('--randomSeed', type=int, default=1203)
     parser.add_argument('--sdim', type=int, default=9)
     parser.add_argument('--num_tables', type=int, default=50)
@@ -113,9 +112,6 @@ if __name__ == '__main__':
             print('ERROR: No Method Selected')
 
         optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-        # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, epsilon=1e-8)
-        # lr_decayed_fn = tf.keras.optimizers.schedules.CosineDecay(args.lr, 1000, alpha=0.1, name=None)
-        #optimizer = tf.keras.optimizers.experimental.AdamW(learning_rate=args.lr, epsilon=1e-8, weight_decay=4e-5)
         layer_shapes, layer_sizes = Method.get_model_architecture()
 
         MPI.COMM_WORLD.Barrier()

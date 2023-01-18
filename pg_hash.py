@@ -206,22 +206,6 @@ class PGHash(ModelHub):
 
         return self.ci
 
-    # Allreduce the first layer of the network
-    # Allgather to get selected indices from each worker
-    # ------- Idea -------
-    # Allreduce the first layer of the network
-    # Gather (rank 0) the selected indices from each worker
-    # Union and determine the number of times each has been selected, sort this (does automatically w unique)
-    # Create a zero weight matrix that is the size of the total unique (union) of selected indices
-    # Gather (rank 0) the selected weights of the final layer from each worker
-    # Add each weight from the worker into the zero matrix, after all workers added, divide by counter
-    # Broadcast back to all workers
-
-    # Idea ----
-    # Create a dictionary housing the selected indices and which workers update them
-    # Gather (rank 0) the selected weights of the final layer from each worker
-    # Iterate over the unique selected indices and fill in the weight matrix with the corresponding workers from dict
-
     def exchange_idx(self):
         if self.rank == 0:
             self.device_idxs = np.empty((self.size, len(self.ci)), dtype=np.int32)
@@ -246,10 +230,13 @@ class PGHash(ModelHub):
         # update the model
         self.update_full_model(model)
         comm_time = 0
+
         # create receiving buffer for first dense layer
         recv_first_layer = np.empty_like(self.full_model[:self.weight_idx])
         # Allreduce first layer of the network
+        t = time.time()
         MPI.COMM_WORLD.Allreduce(self.influence * self.full_model[:self.weight_idx], recv_first_layer, op=MPI.SUM)
+        comm_time += (time.time() - t)
         # update first layer
         self.full_model[:self.weight_idx] = recv_first_layer
 
@@ -263,6 +250,7 @@ class PGHash(ModelHub):
             updated_final_layer[:, self.unique_idx[self.device_idxs[0, :]]] += send_final_layer
             updated_final_bias[self.unique_idx[self.device_idxs[0, :]]] += send_final_bias
             t = time.time()
+            # for memory I didnt gather
             for device in range(1, self.size):
                 recv_buffer_layer = np.empty(self.hls * self.num_c_layers)
                 recv_buffer_bias = np.empty(self.num_c_layers)
