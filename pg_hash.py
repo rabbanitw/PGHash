@@ -264,11 +264,11 @@ class PGHash(ModelHub):
             updated_final_bias[self.unique_idx[self.device_idxs[0, :]]] += send_final_bias
             t = time.time()
             for device in range(1, self.size):
-                recv_buffer_layer = np.empty((self.hls, len(self.ci)))
-                recv_buffer_bias = np.empty(len(self.ci))
+                recv_buffer_layer = np.empty(self.hls * self.num_c_layers)
+                recv_buffer_bias = np.empty(self.num_c_layers)
                 # receive and update final layer
                 MPI.COMM_WORLD.Recv(recv_buffer_layer, source=device)
-                updated_final_layer[:, self.unique_idx[self.device_idxs[device, :]]] += recv_buffer_layer
+                updated_final_layer[:, self.unique_idx[self.device_idxs[device, :]]] += recv_buffer_layer.reshape(self.hls, self.num_c_layers)
                 # receive and update final bias
                 MPI.COMM_WORLD.Recv(recv_buffer_bias, source=device)
                 updated_final_bias[self.unique_idx[self.device_idxs[device, :]]] += recv_buffer_bias
@@ -282,7 +282,7 @@ class PGHash(ModelHub):
         else:
             t = time.time()
             # send sub architecture to root
-            MPI.COMM_WORLD.Send(send_final_layer, dest=0)
+            MPI.COMM_WORLD.Send(send_final_layer.flatten(), dest=0)
             MPI.COMM_WORLD.Send(send_final_bias, dest=0)
             # receive updated changed final layer weights from root
             updated_final_layer = np.empty((self.hls, self.unique_len))
