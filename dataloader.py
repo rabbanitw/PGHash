@@ -14,12 +14,6 @@ def load_extreme_data(rank, size, train_bs, test_bs, train_data_path, test_data_
     features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
     features_t, labels_t, num_labels_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
 
-    # shuffle the sparse training inputs and outputs
-    shuffle_index = np.arange(features.shape[0])
-    np.random.shuffle(shuffle_index)
-    features = features[shuffle_index, :]
-    labels = labels[shuffle_index]
-
     # partition data amongst workers
     worker_features = partition_sparse_dataset(features, rank, size)
     worker_features_t = partition_sparse_dataset(features_t, rank, size)
