@@ -22,7 +22,7 @@ def train(rank, size, PGHash, optimizer, train_data, test_data, num_labels, num_
         pg_train(rank, size, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
              num_features)
     elif method == 'Regular':
-        regular_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, recorder, args, num_labels)
+        regular_train(rank, size, PGHash, optimizer, train_data, test_data, losses, top1, recorder, args, num_labels)
     elif method == 'SLIDE':
         slide_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels)
 

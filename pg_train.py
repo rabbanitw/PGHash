@@ -256,7 +256,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
         losses.reset()
 
 
-def regular_train(rank, Method, optimizer, train_data, test_data, losses, top1, recorder, args, num_labels):
+def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, recorder, args, num_labels):
 
     # parameters
     total_batches = 0
@@ -264,6 +264,7 @@ def regular_train(rank, Method, optimizer, train_data, test_data, losses, top1, 
     acc1_metric = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
     test_acc1 = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
     lsh_time = 0
+    comm_time = 0
 
     # update indices with new current index
     Method.ci = np.arange(num_labels)
@@ -293,6 +294,10 @@ def regular_train(rank, Method, optimizer, train_data, test_data, losses, top1, 
 
             init_time = time.time()
 
+            # communicate models amongst devices (if multiple devices are present)
+            if size > 1:
+                model, comm_time = Method.communicate(model, smart=False)
+
             # transform sparse label to dense sub-label
             batch = x_batch_train.get_shape()[0]
             y_true = tf.sparse.to_dense(y_batch_train)
@@ -320,8 +325,8 @@ def regular_train(rank, Method, optimizer, train_data, test_data, losses, top1, 
             comp_time = (time.time() - init_time) - record_time
 
             # store and save accuracy and loss values
-            recorder.add_new(comp_time, comp_time, 0, lsh_time, acc1, test_acc, loss_value.numpy(), top1.avg,
-                             losses.avg)
+            recorder.add_new((comp_time + comm_time), comp_time, comm_time, lsh_time, acc1, test_acc,
+                             loss_value.numpy(), top1.avg, losses.avg)
             recorder.save_to_file()
 
             # log every X batches
@@ -330,7 +335,7 @@ def regular_train(rank, Method, optimizer, train_data, test_data, losses, top1, 
             if step % 5 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
-                    % (rank, step, comp_time, loss_value.numpy(), acc1, total_batches)
+                    % (rank, step, (comp_time+comm_time), loss_value.numpy(), acc1, total_batches)
                 )
 
         # reset accuracy statistics for next epoch
