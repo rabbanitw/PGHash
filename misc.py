@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import os
+import shutil
 
 
 def compute_accuracy_lsh(y_pred, y_true, lsh_idx, num_l, topk=1):
@@ -62,10 +63,16 @@ class Recorder(object):
         self.rank = rank
         self.saveFolderName = folderName + '/' + args.name + '-' + args.hash_type + '-' + args.dataset + '-' \
                               + str(size) + 'workers-' + str(args.cr) + 'cr'
-        if rank == 0 and not os.path.isdir(self.saveFolderName):
-            os.mkdir(self.saveFolderName)
-            with open(self.saveFolderName + '/ExpDescription', 'w') as f:
-                f.write(str(args) + '\n')
+        if rank == 0:
+            if not os.path.isdir(self.saveFolderName):
+                os.mkdir(self.saveFolderName)
+                with open(self.saveFolderName + '/ExpDescription', 'w') as f:
+                    f.write(str(args) + '\n')
+            else:
+                shutil.rmtree(self.saveFolderName)
+                os.mkdir(self.saveFolderName)
+                with open(self.saveFolderName + '/ExpDescription', 'w') as f:
+                    f.write(str(args) + '\n')
 
     def get_saveFolder(self):
         return self.saveFolderName

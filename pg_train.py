@@ -80,14 +80,15 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
             #'''
             lsh_init = time.time()
-            # update full model
+            # update model and full model
+            Method.model = model
             Method.update_full_model(model)
             # compute LSH
             cur_idx = Method.lsh_initial(x_batch_train)
             # send indices to root (server)
             Method.exchange_idx()
             # update model
-            Method.update_model()
+            model = Method.update_model(return_model=True)
             lsh_time = time.time() - lsh_init
             #'''
 

@@ -138,7 +138,7 @@ class ModelHub:
         partial_model = self.flatten_weights(weights[:-2])
         self.full_model[:self.weight_idx] = partial_model
 
-    def update_model(self):
+    def update_model(self, return_model=False):
 
         # get biases
         biases = self.full_model[self.bias_idx]
@@ -150,6 +150,8 @@ class ModelHub:
 
         new_weights = self.unflatten_weights(sub_model)
         self.model.set_weights(new_weights)
+        if return_model:
+            return self.model
 
     def test_full_model(self, test_data, acc_meter):
         self.big_model.set_weights(self.unflatten_weights_big(self.full_model))

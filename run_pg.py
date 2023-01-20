@@ -17,6 +17,9 @@ def train(rank, size, PGHash, optimizer, train_data, test_data, num_labels, num_
     losses = AverageMeter()
     recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
 
+    # begin training once all devices are ready
+    MPI.COMM_WORLD.Barrier()
+
     # begin training
     if method == 'PGHash':
         pg_train(rank, size, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
