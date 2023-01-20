@@ -5,7 +5,6 @@ from lsh import pg_vanilla, slide, pghash, slidehash
 from mlp import SparseNeuralNetwork
 from misc import compute_accuracy_lsh
 from mpi4py import MPI
-from collections import defaultdict
 
 
 class ModelHub:
@@ -39,10 +38,11 @@ class ModelHub:
         self.unique_len = None
         self.unique_idx = None
         self.count = None
+        self.big_model = None
 
         # initialize the start of the compressed network weights and the total number of compressed labels
         self.num_c_layers = int(self.cr * self.nl)
-        self.weight_idx = (self.nf * self.hls) + self.hls # + (4 * self.hls)
+        self.weight_idx = (self.nf * self.hls) + self.hls
 
         # initialize model
         worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
@@ -110,6 +110,17 @@ class ModelHub:
             start_idx += layer_size
         return unflatten_model
 
+    def unflatten_weights_big(self, flat_weights):
+        unflatten_model = []
+        start_idx = 0
+        end_idx = 0
+        for i in range(len(self.full_layer_shapes)):
+            layer_size = self.full_layer_sizes[i]
+            end_idx += layer_size
+            unflatten_model.append(flat_weights[start_idx:end_idx].reshape(self.full_layer_shapes[i]))
+            start_idx += layer_size
+        return unflatten_model
+
     def return_model(self):
         return self.model
 
@@ -140,29 +151,14 @@ class ModelHub:
         new_weights = self.unflatten_weights(sub_model)
         self.model.set_weights(new_weights)
 
-    def get_new_model(self, returnModel=True):
-        # move back to the top now that we need to reset full model
-        worker_layer_dims = [self.nf, self.hls, len(self.ci)]
-        self.model = SparseNeuralNetwork(worker_layer_dims)
-        self.layer_shapes, self.layer_sizes = self.get_model_architecture()
-        self.update_model()
-
-        if returnModel:
-            return self.model
-
     def test_full_model(self, test_data, acc_meter):
-
-        self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
-        self.layer_shapes, self.layer_sizes = self.get_model_architecture()
-        unflatten_model = self.unflatten_weights(self.full_model)
-        self.model.set_weights(unflatten_model)
+        self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
         label_idx = np.arange(self.nl)
         for (x_batch_test, y_batch_test) in test_data:
             test_batch = x_batch_test.get_shape()[0]
-            y_pred_test = self.model(x_batch_test, training=False)
+            y_pred_test = self.big_model(x_batch_test, training=False)
             test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
             acc_meter.update(test_acc1, test_batch)
-        self.get_new_model(returnModel=False)
         return acc_meter.avg
 
 
@@ -173,6 +169,23 @@ class PGHash(ModelHub):
 
         super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
                  rank, size, q, influence, i1, i2)
+
+        if self.rank == 0:
+            self.big_model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
+            mw = self.big_model.get_weights()
+            layer_shapes = []
+            layer_sizes = []
+            for i in range(len(mw)):
+                layer_shapes.append(mw[i].shape)
+                layer_sizes.append(mw[i].size)
+            self.full_layer_sizes = layer_sizes
+            self.full_layer_shapes = layer_shapes
+
+            # set big model weights
+            self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
+
+        # wait for all workers
+        MPI.COMM_WORLD.Barrier()
 
     def lsh_initial(self, data):
 

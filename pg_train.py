@@ -59,6 +59,10 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
     iterations = 1
     test_acc = np.NaN
     comm_time = 0
+    if args.cr == 1:
+        smartavg = False
+    else:
+        smartavg = True
 
     # get model
     model = Method.return_model()
@@ -74,6 +78,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
             batches_per_q = np.ceil(x_batch_train.shape[0] / args.train_bs).astype(np.int32)
 
+            #'''
             lsh_init = time.time()
             # update full model
             Method.update_full_model(model)
@@ -81,9 +86,10 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             cur_idx = Method.lsh_initial(x_batch_train)
             # send indices to root (server)
             Method.exchange_idx()
-            # get new model
-            model = Method.get_new_model()
+            # update model
+            Method.update_model()
             lsh_time = time.time() - lsh_init
+            #'''
 
             for sub_batch in range(batches_per_q):
 
@@ -105,7 +111,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # communicate models amongst devices (if multiple devices are present)
                 if size > 1:
-                    model, comm_time = Method.communicate(model)
+                    model, comm_time = Method.communicate(model, smart=smartavg)
 
                 # transform sparse label to dense sub-label
                 batch = x.get_shape()[0]
@@ -162,7 +168,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
     Method.ci = np.arange(num_labels)
     Method.bias_idx = Method.ci + Method.bias_start
     # get model
-    model = Method.get_new_model(returnModel=True)
+    model = Method.return_model()
 
     for epoch in range(args.epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -270,7 +276,7 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
     Method.ci = np.arange(num_labels)
     Method.bias_idx = Method.ci + Method.bias_start
     # get model
-    model = Method.get_new_model(returnModel=True)
+    model = Method.return_model()
 
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))

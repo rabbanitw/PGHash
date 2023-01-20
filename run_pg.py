@@ -62,7 +62,6 @@ if __name__ == '__main__':
     # hashing parameters
     sdim = args.sdim
     num_tables = args.num_tables
-    cr = args.cr
     hash_type = args.hash_type
     steps_per_lsh = args.steps_per_lsh
 
@@ -83,12 +82,16 @@ if __name__ == '__main__':
     if args.hash_type[:2] == 'pg':
         batch_size = train_bs * args.q
         method = 'PGHash'
+        cr = args.cr
     elif args.hash_type[:3] == 'reg':
         batch_size = train_bs
         method = 'Regular'
+        cr = 1
     else:
         batch_size = train_bs
         method = 'SLIDE'
+        cr = 1
+        # cr = args.cr
 
     with tf.device('/CPU:0'):
         # load (large) dataset
