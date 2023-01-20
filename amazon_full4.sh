@@ -11,10 +11,11 @@
 #SBATCH --mem 128gb         # memory required by job; if unit is not specified MB will be assumed
 #SBATCH --nice=0
 #SBATCH --mail-type=END   # Valid type values are NONE, BEGIN, END, FAIL, REQUEUE
+#SBATCH --nodelist=cml01
 
 module purge
 module load mpi
 module load cuda/11.4.4
 source ../../../../cmlscratch/marcob/environments/pghash/bin/activate
 
-mpirun -n 4 python run_pg.py --hash_type regular --steps_per_test 500 --train_bs 256 --sdim 8 --dataset Amazon670K --cr 1 --name test1 --randomSeed 1203
+mpirun -n 4 python run_pg.py --hash_type regular --epochs 15 --steps_per_test 250 --train_bs 256 --sdim 8 --dataset Amazon670K --cr 1 --name test1 --randomSeed 1203

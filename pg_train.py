@@ -163,6 +163,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
     test_acc = np.NaN
     acc1_metric = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
     full_idx = np.arange(num_labels)
+    iterations = 1
 
     # update indices with new current index
     Method.ci = np.arange(num_labels)
@@ -177,17 +178,17 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
         train_data.shuffle(len(train_data))
 
         # iterate over the batches of the dataset.
-        for step, (x_batch_train, y_batch_train) in enumerate(train_data, 1):
+        for (x_batch_train, y_batch_train) in train_data:
 
             # compute test accuracy every X steps
-            if step % args.steps_per_test == 0:
+            if iterations % args.steps_per_test == 0:
                 if rank == 0:
                     test_acc = Method.test_full_model(test_data, test_top1)
-                    print("Step %d: Top 1 Test Accuracy %.4f" % (step-1, test_acc))
+                    print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                     recorder.add_testacc(test_acc)
                     test_top1.reset()
 
-            if step % args.steps_per_lsh == 0 or step == 1:
+            if iterations % args.steps_per_lsh == 0 or iterations == 1:
                 lsh_init = time.time()
                 # compute LSH hash tables
                 Method.lsh_get_hash()
@@ -251,11 +252,13 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             # log every X batches
             total_batches += batch
             acc1_metric.reset_state()
-            if step % 5 == 0:
+            if iterations % 5 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
-                    % (rank, step, comp_time, loss_value.numpy(), acc1, total_batches)
+                    % (rank, iterations, comp_time, loss_value.numpy(), acc1, total_batches)
                 )
+
+            iterations += 1
 
         # reset accuracy statistics for next epoch
         top1.reset()
@@ -271,6 +274,7 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
     test_acc1 = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
     lsh_time = 0
     comm_time = 0
+    iterations = 1
 
     # update indices with new current index
     Method.ci = np.arange(num_labels)
@@ -285,16 +289,16 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
         train_data.shuffle(len(train_data))
 
         # iterate over the batches of the dataset.
-        for step, (x_batch_train, y_batch_train) in enumerate(train_data, 1):
+        for (x_batch_train, y_batch_train) in train_data:
 
             # compute test accuracy every X steps
-            if step % args.steps_per_test == 0:
+            if iterations  % args.steps_per_test == 0:
                 if rank == 0:
                     for (x_batch_test, y_batch_test) in test_data:
                         y_pred_test = model(x_batch_test, training=False)
                         test_acc1.update_state(y_pred_test, tf.sparse.to_dense(y_batch_test))
                         test_acc = test_acc1.result().numpy()
-                    print("Step %d: Top 1 Test Accuracy %.4f" % (step-1, test_acc))
+                    print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                     recorder.add_testacc(test_acc)
                     test_acc1.reset_state()
 
@@ -338,11 +342,13 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
             # log every X batches
             total_batches += batch
             acc1_metric.reset_state()
-            if step % 5 == 0:
+            if iterations % 5 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
-                    % (rank, step, (comp_time+comm_time), loss_value.numpy(), acc1, total_batches)
+                    % (rank, iterations, (comp_time+comm_time), loss_value.numpy(), acc1, total_batches)
                 )
+
+            iterations += 1
 
         # reset accuracy statistics for next epoch
         top1.reset()
