@@ -218,8 +218,8 @@ class PGHash(ModelHub):
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
             inputs=model.inputs,
-            #outputs=model.layers[2].output,
-            outputs=model.layers[-3].output,
+            #outputs=model.layers[2].output, # this is the post relu
+            outputs=model.layers[1].output,  # this is the pre relu
         )
         in_layer = feature_extractor(data).numpy()
 
@@ -231,8 +231,13 @@ class PGHash(ModelHub):
         Wx = tf.sparse.sparse_dense_matmul(data, tf.convert_to_tensor(w1)).numpy()
         # add bias
         Wx += self.full_model[(self.weight_idx-self.hls):self.weight_idx]
+        
+        in_layer2 = Wx
         # relu
-        in_layer = np.maximum(Wx, 0)
+        # in_layer2 = np.maximum(Wx, 0)
+
+        print(in_layer)
+        print(in_layer2)
         '''
 
         bs = in_layer.shape[0]

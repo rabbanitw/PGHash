@@ -90,7 +90,10 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             # update model
             # model = Method.update_model(return_model=True)
             Method.update_model()  # THIS DOESN'T
+            # when updating model I need to restart optimizer for some reason...
             optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)  # might need to restart optimizer
+            # reset the correct iteration after re-initializing
+            optimizer.iterations = tf.Variable(iterations-1, dtype=tf.int64, name='iter')
             #optimizer2 = tf.keras.optimizers.Adam(learning_rate=args.lr)
             #model = Method.get_new_model()
 
@@ -147,7 +150,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # log every X batches
                 total_batches += batch
-                if iterations % 1 == 0:
+                if iterations % 5 == 0:
                     print(
                         "(Rank %d) Step %d: Epoch Time %f, Comm Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, "
                         "[%d Total Samples]" % (rank, iterations, (comp_time + comm_time), comm_time,
