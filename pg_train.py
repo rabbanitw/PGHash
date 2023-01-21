@@ -52,7 +52,7 @@ def slide_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
     return tf.sparse.to_dense(sparse_y), tf.convert_to_tensor(mask, dtype=tf.float32)
 
 
-def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
+def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
              num_features):
 
     # parameters
@@ -64,9 +64,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
         smartavg = False
     else:
         smartavg = True
-
-    # get model
-    # model = Method.model
 
     for epoch in range(args.epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -80,22 +77,18 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             batches_per_q = np.ceil(x_batch_train.shape[0] / args.train_bs).astype(np.int32)
 
             lsh_init = time.time()
-            # update model and full model
-            # Method.model = model
+            # update full model
             Method.update_full_model(Method.model)
             # compute LSH
             cur_idx = Method.lsh_initial(Method.model, x_batch_train)
             # send indices to root (server)
             Method.exchange_idx()
             # update model
-            # model = Method.update_model(return_model=True)
-            Method.update_model()  # THIS DOESN'T
+            Method.update_model()
             # when updating model I need to restart optimizer for some reason...
             optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)  # might need to restart optimizer
             # reset the correct iteration after re-initializing
             optimizer.iterations = tf.Variable(iterations-1, dtype=tf.int64, name='iter')
-            #optimizer2 = tf.keras.optimizers.Adam(learning_rate=args.lr)
-            #model = Method.get_new_model()
 
             lsh_time = time.time() - lsh_init
 
