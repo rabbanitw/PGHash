@@ -78,7 +78,8 @@ class ModelHub:
         self.update_model()
 
         # get back to smaller size
-        self.ci = np.arange(self.num_c_layers)
+        # self.ci = np.arange(self.num_c_layers)
+        self.ci = np.sort(np.random.choice(self.nl, self.num_c_layers, replace=False))
         self.bias_idx = self.ci + self.bias_start
 
     def get_model_architecture(self):
@@ -121,9 +122,6 @@ class ModelHub:
             start_idx += layer_size
         return unflatten_model
 
-    def return_model(self):
-        return self.model
-
     def update_full_model(self, model):
         # update full model before averaging
         weights = model.get_weights()
@@ -138,7 +136,7 @@ class ModelHub:
         partial_model = self.flatten_weights(weights[:-2])
         self.full_model[:self.weight_idx] = partial_model
 
-    def update_model(self):
+    def update_model(self, return_model=False):
 
         # get biases
         biases = self.full_model[self.bias_idx]
@@ -150,6 +148,8 @@ class ModelHub:
 
         new_weights = self.unflatten_weights(sub_model)
         self.model.set_weights(new_weights)
+        if return_model:
+            return self.model
 
     def test_full_model(self, test_data, acc_meter):
         self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
@@ -187,7 +187,7 @@ class PGHash(ModelHub):
         # wait for all workers
         MPI.COMM_WORLD.Barrier()
 
-    def lsh_initial(self, data):
+    def lsh_initial(self, model, data):
 
         # get weights
         self.get_final_dense()
@@ -195,12 +195,30 @@ class PGHash(ModelHub):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
-            inputs=self.model.inputs,
-            outputs=self.model.layers[-3].output,
+            inputs=model.inputs,
+            #outputs=model.layers[2].output, # this is the post relu
+            outputs=model.layers[1].output,  # this is the pre relu
         )
         in_layer = feature_extractor(data).numpy()
-        bs = in_layer.shape[0]
 
+        '''
+        # Implemented this and confirmed it's the same as feature extractor
+        # first dense layer
+        w1 = self.full_model[:(self.weight_idx-self.hls)].reshape(self.nf, self.hls)
+
+        Wx = tf.sparse.sparse_dense_matmul(data, tf.convert_to_tensor(w1)).numpy()
+        # add bias
+        Wx += self.full_model[(self.weight_idx-self.hls):self.weight_idx]
+        
+        in_layer2 = Wx
+        # relu
+        # in_layer2 = np.maximum(Wx, 0)
+
+        print(in_layer)
+        print(in_layer2)
+        '''
+
+        bs = in_layer.shape[0]
         ham_dists = np.zeros(self.nl)
 
         # run LSH to find the most important weights over the entire next Q batches

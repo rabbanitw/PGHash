@@ -5,6 +5,7 @@ from misc import compute_accuracy_lsh
 import resource
 import os
 import datetime
+import copy
 
 
 def get_memory(filename):
@@ -51,7 +52,7 @@ def slide_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
     return tf.sparse.to_dense(sparse_y), tf.convert_to_tensor(mask, dtype=tf.float32)
 
 
-def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
+def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
              num_features):
 
     # parameters
@@ -64,9 +65,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
     else:
         smartavg = True
 
-    # get model
-    model = Method.return_model()
-
     for epoch in range(args.epochs):
         print("\nStart of epoch %d" % (epoch,))
 
@@ -78,25 +76,28 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
             batches_per_q = np.ceil(x_batch_train.shape[0] / args.train_bs).astype(np.int32)
 
-            #'''
             lsh_init = time.time()
             # update full model
-            Method.update_full_model(model)
+            Method.update_full_model(Method.model)
             # compute LSH
-            cur_idx = Method.lsh_initial(x_batch_train)
+            cur_idx = Method.lsh_initial(Method.model, x_batch_train)
             # send indices to root (server)
             Method.exchange_idx()
             # update model
             Method.update_model()
+            # when updating model I need to restart optimizer for some reason...
+            optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)  # might need to restart optimizer
+            # reset the correct iteration after re-initializing
+            optimizer.iterations = tf.Variable(iterations-1, dtype=tf.int64, name='iter')
+
             lsh_time = time.time() - lsh_init
-            #'''
 
             for sub_batch in range(batches_per_q):
 
                 # compute test accuracy every X steps
                 if iterations % args.steps_per_test == 0:
                     if rank == 0:
-                        Method.update_full_model(model)
+                        Method.update_full_model(Method.model)
                         test_acc = Method.test_full_model(test_data, test_top1)
                         print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                         recorder.add_testacc(test_acc)
@@ -111,7 +112,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # communicate models amongst devices (if multiple devices are present)
                 if size > 1:
-                    model, comm_time = Method.communicate(model, smart=smartavg)
+                    model, comm_time = Method.communicate(Method.model, smart=smartavg)
 
                 # transform sparse label to dense sub-label
                 batch = x.get_shape()[0]
@@ -119,10 +120,10 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # perform gradient update
                 with tf.GradientTape() as tape:
-                    y_pred = model(x, training=True)
+                    y_pred = Method.model(x)
                     loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-                grads = tape.gradient(loss_value, model.trainable_weights)
-                optimizer.apply_gradients(zip(grads, model.trainable_weights))
+                grads = tape.gradient(loss_value, Method.model.trainable_weights)
+                optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
 
                 # compute accuracy (top 1) and loss for the minibatch
                 rec_init = time.time()
@@ -163,12 +164,13 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
     test_acc = np.NaN
     acc1_metric = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
     full_idx = np.arange(num_labels)
+    iterations = 1
 
     # update indices with new current index
     Method.ci = np.arange(num_labels)
     Method.bias_idx = Method.ci + Method.bias_start
     # get model
-    model = Method.return_model()
+    model = Method.model
 
     for epoch in range(args.epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -177,17 +179,17 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
         train_data.shuffle(len(train_data))
 
         # iterate over the batches of the dataset.
-        for step, (x_batch_train, y_batch_train) in enumerate(train_data, 1):
+        for (x_batch_train, y_batch_train) in train_data:
 
             # compute test accuracy every X steps
-            if step % args.steps_per_test == 0:
+            if iterations % args.steps_per_test == 0:
                 if rank == 0:
                     test_acc = Method.test_full_model(test_data, test_top1)
-                    print("Step %d: Top 1 Test Accuracy %.4f" % (step-1, test_acc))
+                    print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                     recorder.add_testacc(test_acc)
                     test_top1.reset()
 
-            if step % args.steps_per_lsh == 0 or step == 1:
+            if iterations % args.steps_per_lsh == 0 or iterations == 1:
                 lsh_init = time.time()
                 # compute LSH hash tables
                 Method.lsh_get_hash()
@@ -251,11 +253,13 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             # log every X batches
             total_batches += batch
             acc1_metric.reset_state()
-            if step % 5 == 0:
+            if iterations % 5 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
-                    % (rank, step, comp_time, loss_value.numpy(), acc1, total_batches)
+                    % (rank, iterations, comp_time, loss_value.numpy(), acc1, total_batches)
                 )
+
+            iterations += 1
 
         # reset accuracy statistics for next epoch
         top1.reset()
@@ -271,12 +275,13 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
     test_acc1 = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
     lsh_time = 0
     comm_time = 0
+    iterations = 1
 
     # update indices with new current index
     Method.ci = np.arange(num_labels)
     Method.bias_idx = Method.ci + Method.bias_start
     # get model
-    model = Method.return_model()
+    model = Method.model
 
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
@@ -285,16 +290,16 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
         train_data.shuffle(len(train_data))
 
         # iterate over the batches of the dataset.
-        for step, (x_batch_train, y_batch_train) in enumerate(train_data, 1):
+        for (x_batch_train, y_batch_train) in train_data:
 
             # compute test accuracy every X steps
-            if step % args.steps_per_test == 0:
+            if iterations % args.steps_per_test == 0:
                 if rank == 0:
                     for (x_batch_test, y_batch_test) in test_data:
                         y_pred_test = model(x_batch_test, training=False)
                         test_acc1.update_state(y_pred_test, tf.sparse.to_dense(y_batch_test))
                         test_acc = test_acc1.result().numpy()
-                    print("Step %d: Top 1 Test Accuracy %.4f" % (step-1, test_acc))
+                    print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                     recorder.add_testacc(test_acc)
                     test_acc1.reset_state()
 
@@ -338,11 +343,13 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
             # log every X batches
             total_batches += batch
             acc1_metric.reset_state()
-            if step % 5 == 0:
+            if iterations % 5 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
-                    % (rank, step, (comp_time+comm_time), loss_value.numpy(), acc1, total_batches)
+                    % (rank, iterations, (comp_time+comm_time), loss_value.numpy(), acc1, total_batches)
                 )
+
+            iterations += 1
 
         # reset accuracy statistics for next epoch
         top1.reset()
