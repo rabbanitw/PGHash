@@ -64,13 +64,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
         smartavg = False
     else:
         smartavg = True
-    #optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=args.lr)
-    #optimizer2 = tf.keras.optimizers.legacy.Adam(learning_rate=args.lr)
-    optimizer2 = tf.keras.optimizers.Adam(learning_rate=args.lr)
-    #optimizer = tf.keras.optimizers.experimental.AdamW(learning_rate=args.lr)
-    #optimizer2 = tf.keras.optimizers.experimental.AdamW(learning_rate=args.lr)
-    #optimizer = tf.keras.optimizers.legacy.SGD(learning_rate=args.lr)
-    #optimizer2 = tf.keras.optimizers.legacy.SGD(learning_rate=args.lr)
 
     # get model
     # model = Method.model
@@ -135,19 +128,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
-
-                '''
-                with tf.GradientTape() as tape:
-                    y_pred2 = model_old(x, training=True)
-                    loss_value2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred2))
-                grads2 = tape.gradient(loss_value2, model_old.trainable_weights)
-
-                optimizer2.apply_gradients(zip(grads2, model_old.trainable_weights))
-
-                print(loss_value)
-                print(loss_value2)
-                print(np.linalg.norm(Method.flatten_weights(Method.model.get_weights()) - Method.flatten_weights(model_old.get_weights())))
-                '''
 
                 # compute accuracy (top 1) and loss for the minibatch
                 rec_init = time.time()
