@@ -5,6 +5,7 @@ from misc import compute_accuracy_lsh
 import resource
 import os
 import datetime
+import copy
 
 
 def get_memory(filename):
@@ -63,9 +64,16 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
         smartavg = False
     else:
         smartavg = True
+    #optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=args.lr)
+    #optimizer2 = tf.keras.optimizers.legacy.Adam(learning_rate=args.lr)
+    optimizer2 = tf.keras.optimizers.Adam(learning_rate=args.lr)
+    #optimizer = tf.keras.optimizers.experimental.AdamW(learning_rate=args.lr)
+    #optimizer2 = tf.keras.optimizers.experimental.AdamW(learning_rate=args.lr)
+    #optimizer = tf.keras.optimizers.legacy.SGD(learning_rate=args.lr)
+    #optimizer2 = tf.keras.optimizers.legacy.SGD(learning_rate=args.lr)
 
     # get model
-    model = Method.return_model()
+    # model = Method.model
 
     for epoch in range(args.epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -78,26 +86,29 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
             batches_per_q = np.ceil(x_batch_train.shape[0] / args.train_bs).astype(np.int32)
 
-            #'''
             lsh_init = time.time()
             # update model and full model
-            Method.model = model
-            Method.update_full_model(model)
+            # Method.model = model
+            Method.update_full_model(Method.model)
             # compute LSH
-            cur_idx = Method.lsh_initial(x_batch_train)
+            cur_idx = Method.lsh_initial(Method.model, x_batch_train)
             # send indices to root (server)
             Method.exchange_idx()
             # update model
-            model = Method.update_model(return_model=True)
+            # model = Method.update_model(return_model=True)
+            Method.update_model()  # THIS DOESN'T
+            optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)  # might need to restart optimizer
+            #optimizer2 = tf.keras.optimizers.Adam(learning_rate=args.lr)
+            #model = Method.get_new_model()
+
             lsh_time = time.time() - lsh_init
-            #'''
 
             for sub_batch in range(batches_per_q):
 
                 # compute test accuracy every X steps
                 if iterations % args.steps_per_test == 0:
                     if rank == 0:
-                        Method.update_full_model(model)
+                        Method.update_full_model(Method.model)
                         test_acc = Method.test_full_model(test_data, test_top1)
                         print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                         recorder.add_testacc(test_acc)
@@ -112,7 +123,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # communicate models amongst devices (if multiple devices are present)
                 if size > 1:
-                    model, comm_time = Method.communicate(model, smart=smartavg)
+                    model, comm_time = Method.communicate(Method.model, smart=smartavg)
 
                 # transform sparse label to dense sub-label
                 batch = x.get_shape()[0]
@@ -120,10 +131,23 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # perform gradient update
                 with tf.GradientTape() as tape:
-                    y_pred = model(x, training=True)
+                    y_pred = Method.model(x)
                     loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-                grads = tape.gradient(loss_value, model.trainable_weights)
-                optimizer.apply_gradients(zip(grads, model.trainable_weights))
+                grads = tape.gradient(loss_value, Method.model.trainable_weights)
+                optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
+
+                '''
+                with tf.GradientTape() as tape:
+                    y_pred2 = model_old(x, training=True)
+                    loss_value2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred2))
+                grads2 = tape.gradient(loss_value2, model_old.trainable_weights)
+
+                optimizer2.apply_gradients(zip(grads2, model_old.trainable_weights))
+
+                print(loss_value)
+                print(loss_value2)
+                print(np.linalg.norm(Method.flatten_weights(Method.model.get_weights()) - Method.flatten_weights(model_old.get_weights())))
+                '''
 
                 # compute accuracy (top 1) and loss for the minibatch
                 rec_init = time.time()
@@ -143,7 +167,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # log every X batches
                 total_batches += batch
-                if iterations % 5 == 0:
+                if iterations % 1 == 0:
                     print(
                         "(Rank %d) Step %d: Epoch Time %f, Comm Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, "
                         "[%d Total Samples]" % (rank, iterations, (comp_time + comm_time), comm_time,
@@ -170,7 +194,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
     Method.ci = np.arange(num_labels)
     Method.bias_idx = Method.ci + Method.bias_start
     # get model
-    model = Method.return_model()
+    model = Method.model
 
     for epoch in range(args.epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -281,7 +305,7 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
     Method.ci = np.arange(num_labels)
     Method.bias_idx = Method.ci + Method.bias_start
     # get model
-    model = Method.return_model()
+    model = Method.model
 
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
@@ -293,7 +317,7 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
         for (x_batch_train, y_batch_train) in train_data:
 
             # compute test accuracy every X steps
-            if iterations  % args.steps_per_test == 0:
+            if iterations % args.steps_per_test == 0:
                 if rank == 0:
                     for (x_batch_test, y_batch_test) in test_data:
                         y_pred_test = model(x_batch_test, training=False)
