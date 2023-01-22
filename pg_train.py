@@ -5,7 +5,6 @@ from misc import compute_accuracy_lsh
 import resource
 import os
 import datetime
-import copy
 
 
 def get_memory(filename):
@@ -223,7 +222,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
 
             # perform gradient update
             with tf.GradientTape() as tape:
-                y_pred = model(x_batch_train, training=True)
+                y_pred = Method.model(x_batch_train, training=True)
                 y_pred = tf.math.multiply(pred_mask, y_pred)
                 loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
 
@@ -248,7 +247,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             recorder.save_to_file()
 
             # update model and reset neurons that were incorrectly backpropped
-            model = Method.update(model, np.unique(concat_idx))
+            Method.update(np.unique(concat_idx))
 
             # log every X batches
             total_batches += batch

@@ -5,6 +5,7 @@ from lsh import pg_vanilla, slide, pghash, slidehash
 from mlp import SparseNeuralNetwork
 from misc import compute_accuracy_lsh
 from mpi4py import MPI
+import time
 
 
 class ModelHub:
@@ -81,6 +82,23 @@ class ModelHub:
         # self.ci = np.arange(self.num_c_layers)
         self.ci = np.sort(np.random.choice(self.nl, self.num_c_layers, replace=False))
         self.bias_idx = self.ci + self.bias_start
+
+        if self.rank == 0:
+            self.big_model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
+            mw = self.big_model.get_weights()
+            layer_shapes = []
+            layer_sizes = []
+            for i in range(len(mw)):
+                layer_shapes.append(mw[i].shape)
+                layer_sizes.append(mw[i].size)
+            self.full_layer_sizes = layer_sizes
+            self.full_layer_shapes = layer_shapes
+
+            # set big model weights
+            self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
+
+        # wait for all workers
+        MPI.COMM_WORLD.Barrier()
 
     def get_model_architecture(self):
         model_weights = self.model.get_weights()
@@ -170,23 +188,6 @@ class PGHash(ModelHub):
         super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
                  rank, size, q, influence, i1, i2)
 
-        if self.rank == 0:
-            self.big_model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
-            mw = self.big_model.get_weights()
-            layer_shapes = []
-            layer_sizes = []
-            for i in range(len(mw)):
-                layer_shapes.append(mw[i].shape)
-                layer_sizes.append(mw[i].size)
-            self.full_layer_sizes = layer_sizes
-            self.full_layer_shapes = layer_shapes
-
-            # set big model weights
-            self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
-
-        # wait for all workers
-        MPI.COMM_WORLD.Barrier()
-
     def lsh_initial(self, model, data):
 
         # get weights
@@ -196,7 +197,7 @@ class PGHash(ModelHub):
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
             inputs=model.inputs,
-            #outputs=model.layers[2].output, # this is the post relu
+            # outputs=model.layers[2].output, # this is the post relu
             outputs=model.layers[1].output,  # this is the pre relu
         )
         in_layer = feature_extractor(data).numpy()
@@ -224,7 +225,7 @@ class PGHash(ModelHub):
         # run LSH to find the most important weights over the entire next Q batches
         for _ in range(self.num_tables):
             g_mat, ht_dict = pghash(self.final_dense, n, self.sdim)
-            ham_dists += pg_vanilla(in_layer, g_mat, ht_dict, ham_dists)
+            ham_dists += pg_vanilla(in_layer, g_mat, ht_dict, ham_dists, self.nf)
 
         # pick just the largest differences
         avg_ham_dists = -ham_dists / (bs * self.num_tables)
@@ -393,13 +394,15 @@ class SLIDE(ModelHub):
 
         self.gaussian_mats = gaussian_mats
 
-    def lsh(self, data, union=True, num_random_table=3):
+    def lsh(self, data, union=True, num_random_table=50):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
             inputs=self.model.inputs,
-            outputs=self.model.layers[-3].output,
+            outputs=self.model.layers[2].output,  # this is the post relu
+            # outputs=self.model.layers[1].output,  # this is the pre relu
         )
+
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
         cur_idx = [i for i in range(bs)]
@@ -459,9 +462,9 @@ class SLIDE(ModelHub):
 
         return cur_idx
 
-    def update(self, model, update_indices):
+    def update(self, update_indices):
         # update full model before averaging
-        weights = model.get_weights()
+        weights = self.model.get_weights()
         w = weights[-2]
         b = weights[-1]
         self.get_final_dense()

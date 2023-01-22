@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import sklearn.metrics as sn
 from collections import defaultdict
-
+import time
 
 
 def pghash(weights, n, sdim):
@@ -23,9 +23,23 @@ def pghash(weights, n, sdim):
     # convert to base 10
     hash_table = hash_table.T.dot(1 << np.arange(hash_table.T.shape[-1]))
 
+    #'''
     hash_dict = defaultdict(list)
     for k, v in zip(hash_table, np.arange(len(hash_table))):
         hash_dict[k].append(v)
+
+    for key in hash_dict:
+        hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
+    #'''
+
+    '''
+    hash_dict = {}
+    for k, v in zip(hash_table, np.arange(len(hash_table))):
+        if k in hash_dict:
+            hash_dict[k] = np.append(hash_dict[k], v)
+        else:
+            hash_dict[k] = np.array([v], dtype=np.int)
+    '''
 
     return pg_gaussian, hash_dict
 
@@ -48,7 +62,7 @@ def slidehash(vectors, n, sdim):
     return slide_gaussian, hash_dict
 
 
-def pg_vanilla(in_layer, gaussian, weight_ht_dict, idx_count):
+def pg_vanilla(in_layer, gaussian, weight_ht_dict, idx_count, num_features):
     '''
         Takes a layer input and determines which weights are cosin (dis)similar via PGHash
         :param in_layer: layer input, must be a column-vector
@@ -59,14 +73,13 @@ def pg_vanilla(in_layer, gaussian, weight_ht_dict, idx_count):
         :return: hash tables and ...
     '''
 
-    # Apply Slide to input vector.
+    # Apply PG to input vector.
     transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
     input_vals = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
 
     # map equivalent hashes and return the adjusted
-    unique_idx, count = np.unique(np.concatenate([np.array(weight_ht_dict[i], dtype=np.int) for i in input_vals]),
-                                  return_counts=True)
-    idx_count[unique_idx] += count
+    for i in input_vals:
+        idx_count[weight_ht_dict[i]] += 1
 
     return idx_count
 
@@ -91,6 +104,22 @@ def slide(in_layer, gaussian, weight_ht_dict):
 
 
 '''
+def pg(weights, in_layer, n, sdim):
+
+    # create gaussian matrix
+    pg_gaussian = (1/int(n/sdim))*np.tile(np.random.normal(size=(sdim, sdim)), int(np.ceil(n/sdim)))[:, :n]
+
+    # Apply PGHash to weights.
+    hash_table = np.heaviside(pg_gaussian@weights, 0)
+
+    # Apply Slide to input vector.
+    transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
+
+    # Compute Hamming Distance
+    v = sn.DistanceMetric.get_metric("hamming").pairwise(transformed_layer.T, hash_table.T) * transformed_layer.T.shape[-1]
+
+    return np.sum(v.T, axis=0)
+
 def pg_avg(in_layer, pg_gaussian, hash_table):
 
     # Apply PGHash to input data.
