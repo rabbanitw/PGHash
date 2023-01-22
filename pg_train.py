@@ -121,6 +121,9 @@ def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1,
                 with tf.GradientTape() as tape:
                     y_pred = Method.model(x)
                     loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+                    # issue computing the loss when y_true is 1 but mask made it 0 (since it didn't predict it)
+                    # i need to make that value 1
+                    # multiply y_true by mask...
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
 
@@ -214,6 +217,9 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             nz = tf.reshape(tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32), [batch, 1])
             y_true = y_true / nz
 
+            # set non-active neuron true values to 0 because shouldn't count against SLIDE
+            y_true = tf.math.multiply(pred_mask, y_true)
+
             # set non-active weights to zero so their gradients are small (~will try to become fully accurate later)
             final_layer = model.layers[-1].get_weights()
             final_layer[0][:, non_active_idx] = 0
@@ -254,8 +260,8 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             acc1_metric.reset_state()
             if iterations % 5 == 0:
                 print(
-                    "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
-                    % (rank, iterations, comp_time, loss_value.numpy(), acc1, total_batches)
+                    "(Rank %d) Step %d: Epoch Time %f, LSH Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
+                    % (rank, iterations, comp_time, lsh_time, loss_value.numpy(), acc1, total_batches)
                 )
 
             iterations += 1

@@ -197,7 +197,7 @@ class PGHash(ModelHub):
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
             inputs=model.inputs,
-            # outputs=model.layers[2].output, # this is the post relu
+            # outputs=model.layers[2].output,  # this is the post relu
             outputs=model.layers[1].output,  # this is the pre relu
         )
         in_layer = feature_extractor(data).numpy()
