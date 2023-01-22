@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import time
-from lsh import pg_vanilla, slide, pghash, slidehash
+from lsh import pg, slide, pg_hashtable, slide_hashtable
 from mlp import SparseNeuralNetwork
 from misc import compute_accuracy_lsh
 from mpi4py import MPI
@@ -224,8 +224,8 @@ class PGHash(ModelHub):
 
         # run LSH to find the most important weights over the entire next Q batches
         for _ in range(self.num_tables):
-            g_mat, ht_dict = pghash(self.final_dense, n, self.sdim)
-            ham_dists += pg_vanilla(in_layer, g_mat, ht_dict, ham_dists, self.nf)
+            g_mat, ht_dict = pg_hashtable(self.final_dense, n, self.sdim)
+            ham_dists += pg(in_layer, g_mat, ht_dict, ham_dists)
 
         # pick just the largest differences
         avg_ham_dists = -ham_dists / (bs * self.num_tables)
@@ -383,7 +383,7 @@ class SLIDE(ModelHub):
 
         # determine all the hash tables and gaussian matrices
         for i in range(self.num_tables):
-            g_mat, ht_dict = slidehash(self.final_dense, n, self.sdim)
+            g_mat, ht_dict = slide_hashtable(self.final_dense, n, self.sdim)
 
             if i == 0:
                 gaussian_mats = g_mat
