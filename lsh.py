@@ -5,7 +5,7 @@ from collections import defaultdict
 import time
 
 
-def pghash(weights, n, sdim):
+def pg_hashtable(weights, n, sdim):
     '''
     compute hashing
     :param vectors:
@@ -20,31 +20,21 @@ def pghash(weights, n, sdim):
     # Apply PGHash to weights.
     hash_table = np.heaviside(pg_gaussian@weights, 0)
 
-    # convert to base 10
+    # convert to base 2
     hash_table = hash_table.T.dot(1 << np.arange(hash_table.T.shape[-1]))
 
-    #'''
+    # create dictionary holding the base 2 hash code (key) and the weights which share that hash code (value)
     hash_dict = defaultdict(list)
     for k, v in zip(hash_table, np.arange(len(hash_table))):
         hash_dict[k].append(v)
-
+    # make the dictionary contain numpy arrays and not a list (for faster slicing)
     for key in hash_dict:
         hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
-    #'''
-
-    '''
-    hash_dict = {}
-    for k, v in zip(hash_table, np.arange(len(hash_table))):
-        if k in hash_dict:
-            hash_dict[k] = np.append(hash_dict[k], v)
-        else:
-            hash_dict[k] = np.array([v], dtype=np.int)
-    '''
 
     return pg_gaussian, hash_dict
 
 
-def slidehash(vectors, n, sdim):
+def slide_hashtable(vectors, n, sdim):
 
     # create gaussian matrix
     slide_gaussian = np.random.normal(size=(sdim, n))
@@ -52,17 +42,21 @@ def slidehash(vectors, n, sdim):
     # Apply Slide to weights.
     hash_table = np.heaviside(slide_gaussian@vectors, 0)
 
-    # convert to base 10
+    # convert to base 2
     hash_table = hash_table.T.dot(1 << np.arange(hash_table.T.shape[-1]))
 
+    # create dictionary holding the base 2 hash code (key) and the weights which share that hash code (value)
     hash_dict = defaultdict(list)
     for k, v in zip(hash_table, np.arange(len(hash_table))):
         hash_dict[k].append(v)
+    # make the dictionary contain numpy arrays and not a list (for faster slicing)
+    for key in hash_dict:
+        hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
 
     return slide_gaussian, hash_dict
 
 
-def pg_vanilla(in_layer, gaussian, weight_ht_dict, idx_count, num_features):
+def pg(in_layer, gaussian, weight_ht_dict, idx_count):
     '''
         Takes a layer input and determines which weights are cosin (dis)similar via PGHash
         :param in_layer: layer input, must be a column-vector
@@ -75,6 +69,7 @@ def pg_vanilla(in_layer, gaussian, weight_ht_dict, idx_count, num_features):
 
     # Apply PG to input vector.
     transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
+    # convert to base 2
     input_vals = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
 
     # map equivalent hashes and return the adjusted
@@ -100,7 +95,7 @@ def slide(in_layer, gaussian, weight_ht_dict):
     input_vals = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
 
     # map equivalent hashes and return them
-    return [np.array(weight_ht_dict[i]) for i in input_vals]
+    return [weight_ht_dict[i] for i in input_vals]
 
 
 '''
