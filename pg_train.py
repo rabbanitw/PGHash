@@ -5,6 +5,7 @@ from misc import compute_accuracy_lsh
 import resource
 import os
 import datetime
+import copy
 
 
 def get_memory(filename):
@@ -79,16 +80,17 @@ def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1,
             # update full model
             Method.update_full_model(Method.model)
             # compute LSH
-            cur_idx = Method.lsh_initial(Method.model, x_batch_train)
-            # send indices to root (server)
-            Method.exchange_idx()
+            # cur_idx = Method.lsh_initial(Method.model, x_batch_train)
+            cur_idx, per_sample_idx = Method.lsh(Method.model, x_batch_train)
+            if size > 1:
+                # send indices to root (server)
+                Method.exchange_idx()
             # update model
             Method.update_model()
             # when updating model I need to restart optimizer for some reason...
             optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)  # might need to restart optimizer
             # reset the correct iteration after re-initializing
             optimizer.iterations = tf.Variable(iterations-1, dtype=tf.int64, name='iter')
-
             lsh_time = time.time() - lsh_init
 
             for sub_batch in range(batches_per_q):
@@ -171,8 +173,6 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
     # update indices with new current index
     Method.ci = np.arange(num_labels)
     Method.bias_idx = Method.ci + Method.bias_start
-    # get model
-    model = Method.model
 
     for epoch in range(args.epochs):
         print("\nStart of epoch %d" % (epoch,))
@@ -220,11 +220,13 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             # set non-active neuron true values to 0 because shouldn't count against SLIDE
             y_true = tf.math.multiply(pred_mask, y_true)
 
+            initial_weights = Method.model.get_weights()
+
             # set non-active weights to zero so their gradients are small (~will try to become fully accurate later)
-            final_layer = model.layers[-1].get_weights()
+            final_layer = Method.model.layers[-1].get_weights()
             final_layer[0][:, non_active_idx] = 0
             final_layer[1][non_active_idx] = 0
-            model.layers[-1].set_weights(final_layer)
+            Method.model.layers[-1].set_weights(final_layer)
 
             # perform gradient update
             with tf.GradientTape() as tape:
@@ -233,9 +235,9 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                 loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
 
             # apply backpropagation after setting non-active weights to zero
-            grads = tape.gradient(loss_value, model.trainable_weights)
+            grads = tape.gradient(loss_value, Method.model.trainable_weights)
             # update weights
-            optimizer.apply_gradients(zip(grads, model.trainable_weights))
+            optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
 
             # compute accuracy (top 1) and loss for the minibatch
             rec_init = time.time()
@@ -252,8 +254,13 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                              loss_value.numpy(), top1.avg, losses.avg)
             recorder.save_to_file()
 
+            print(initial_weights[-1])
+            print(Method.model.get_weights()[-1])
+
             # update model and reset neurons that were incorrectly backpropped
-            Method.update(np.unique(concat_idx))
+            Method.update(initial_weights, non_active_idx)
+
+            print(Method.model.get_weights()[-1])
 
             # log every X batches
             total_batches += batch
