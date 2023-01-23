@@ -24,15 +24,56 @@ def get_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
     :param full_num_labels: Total number of output nodes
     :return: Dense sub-label corresponding to given output nodes
     '''
-    true_idx = sparse_y.indices.numpy()
-    y_true = np.zeros((batch_size, full_num_labels))
-    for i in true_idx:
-        y_true[i[0], i[1]] = 1
-    y_true = y_true[:, sub_idx]
+
+    # true_idx = sparse_y.indices.numpy()
+    # y_true = np.zeros((batch_size, full_num_labels))
+    # for i in true_idx:
+    #    y_true[i[0], i[1]] = 1
+
+    y_true = tf.sparse.to_dense(sparse_y).numpy()
+
+    # maybe divide by num_labels here first...
     nz = np.count_nonzero(y_true, axis=1).reshape(batch_size, 1)
     nz[nz == 0] = 1
     y_true = y_true / nz
+
+    y_true = y_true[:, sub_idx]
+    #nz = np.count_nonzero(y_true, axis=1).reshape(batch_size, 1)
+    #nz[nz == 0] = 1
+    #y_true = y_true / nz
     return tf.convert_to_tensor(y_true, dtype=tf.float32)
+
+
+def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size):
+    '''
+    Takes a sparse full label and converts it into a dense sub-label corresponding to the output nodes in the
+    sub-architecture for a given device
+    :param sparse_y: Sparse full labels
+    :param sub_idx: Indices for which output nodes are used/activated in the sub-architecture
+    :param batch_size: Batch size
+    :param full_num_labels: Total number of output nodes
+    :return: Dense sub-label corresponding to given output nodes
+    '''
+
+    y_true = tf.sparse.to_dense(sparse_y).numpy()
+
+    mask = np.zeros((batch_size, y_true.shape[1]))
+    for j in range(batch_size):
+        mask[j, sample_idx[j]] = 1
+
+    # mask the true label
+    y_true = y_true * mask
+
+    # shorten the true label and mask
+    y_true = y_true[:, sub_idx]
+    mask = mask[:, sub_idx]
+
+    # make sure all samples are divided by number of labels (MAYBE DO THIS BEFORE!!)
+    nz = np.count_nonzero(y_true, axis=1).reshape(batch_size, 1)
+    nz[nz == 0] = 1
+    y_true = y_true / nz
+
+    return tf.convert_to_tensor(y_true, dtype=tf.float32), tf.convert_to_tensor(mask, dtype=tf.float32)
 
 
 def slide_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
@@ -82,6 +123,7 @@ def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1,
             # compute LSH
             # cur_idx = Method.lsh_initial(Method.model, x_batch_train)
             cur_idx, per_sample_idx = Method.lsh(Method.model, x_batch_train)
+            # cur_idx = Method.lsh2(Method.model, x_batch_train)
             if size > 1:
                 # send indices to root (server)
                 Method.exchange_idx()
@@ -117,15 +159,14 @@ def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1,
 
                 # transform sparse label to dense sub-label
                 batch = x.get_shape()[0]
-                y_true = get_partial_label(y, cur_idx, batch, num_labels)
+                # y_true = get_partial_label(y, cur_idx, batch, num_labels)
+                y_true, pred_mask = get_partial_label_mask(y, cur_idx, per_sample_idx, batch)
 
                 # perform gradient update
                 with tf.GradientTape() as tape:
                     y_pred = Method.model(x)
+                    y_pred = tf.math.multiply(pred_mask, y_pred)
                     loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-                    # issue computing the loss when y_true is 1 but mask made it 0 (since it didn't predict it)
-                    # i need to make that value 1
-                    # multiply y_true by mask...
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
 

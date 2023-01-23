@@ -221,7 +221,57 @@ class PGHash(ModelHub):
 
         return self.ci
 
-    def lsh(self, model, data, num_random_table=10):
+    def lsh(self, model, data, num_random_table=50):
+
+        # get input layer for LSH
+        feature_extractor = tf.keras.Model(
+            inputs=model.inputs,
+            outputs=model.layers[2].output,  # this is the post relu
+            # outputs=self.model.layers[1].output,  # this is the pre relu
+        )
+
+        in_layer = feature_extractor(data).numpy()
+        bs = in_layer.shape[0]
+        cur_idx = [i for i in range(bs)]
+        # prev_idx = np.arange(self.nl)
+
+        for i in range(num_random_table):
+            g_mat, ht_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
+            for j in range(bs):
+
+                # Apply PG to input vector.
+                transformed_layer = np.heaviside(g_mat @ in_layer[j, :].T, 0)
+                # convert to base 2
+                hash_code = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
+
+                if i == 0:
+                    cur_idx[j] = ht_dict[hash_code]
+                else:
+                    cur_idx[j] = np.union1d(cur_idx[j], ht_dict[hash_code])
+
+            chosen_idx, count = np.unique(np.concatenate(cur_idx), return_counts=True)
+            if len(chosen_idx) > self.num_c_layers:
+                # take the top cr*num_labels neurons
+                top_idx = np.argsort(-count)[:self.num_c_layers]
+                chosen_idx = chosen_idx[top_idx]
+                for j in range(bs):
+                    cur_idx[j] = np.intersect1d(cur_idx[j], chosen_idx).astype(np.int32)
+                self.ci = np.sort(chosen_idx).astype(np.int32)
+                break
+            if i == num_random_table-1:
+                # try random fill first
+                non_chosen = np.setdiff1d(np.arange(self.nl), chosen_idx)
+                random_fill = np.random.choice(non_chosen, size=(self.num_c_layers - len(chosen_idx)), replace=False)
+                for j in range(bs):
+                    cur_idx[j] = np.union1d(cur_idx[j], random_fill).astype(np.int32)
+                self.ci = np.union1d(random_fill, chosen_idx).astype(np.int32)
+
+        # update indices with new current index
+        self.bias_idx = self.ci + self.bias_start
+
+        return self.ci, cur_idx
+
+    def lsh2(self, model, data, num_random_table=10):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -256,13 +306,13 @@ class PGHash(ModelHub):
             prev_idx = chosen_idx
 
         # try random sample first
-        rand = np.random.choice(non_chosen, size=(self.num_c_layers-len(chosen_idx)), replace=False)
+        rand = np.random.choice(non_chosen, size=(self.num_c_layers - len(chosen_idx)), replace=False)
         self.ci = np.union1d(rand, chosen_idx).astype(np.int32)
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
 
-        return self.ci, cur_idx
+        return self.ci
 
     def exchange_idx(self):
         if self.rank == 0:
