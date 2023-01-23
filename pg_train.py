@@ -57,6 +57,11 @@ def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size):
 
     y_true = tf.sparse.to_dense(sparse_y).numpy()
 
+    # make sure all samples are divided by number of labels (MAYBE DO THIS BEFORE!!)
+    nz = np.count_nonzero(y_true, axis=1).reshape(batch_size, 1)
+    nz[nz == 0] = 1
+    y_true = y_true / nz
+
     mask = np.zeros((batch_size, y_true.shape[1]))
     for j in range(batch_size):
         mask[j, sample_idx[j]] = 1
@@ -67,11 +72,6 @@ def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size):
     # shorten the true label and mask
     y_true = y_true[:, sub_idx]
     mask = mask[:, sub_idx]
-
-    # make sure all samples are divided by number of labels (MAYBE DO THIS BEFORE!!)
-    nz = np.count_nonzero(y_true, axis=1).reshape(batch_size, 1)
-    nz[nz == 0] = 1
-    y_true = y_true / nz
 
     return tf.convert_to_tensor(y_true, dtype=tf.float32), tf.convert_to_tensor(mask, dtype=tf.float32)
 
@@ -123,7 +123,6 @@ def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1,
             # compute LSH
             # cur_idx = Method.lsh_initial(Method.model, x_batch_train)
             cur_idx, per_sample_idx = Method.lsh(Method.model, x_batch_train)
-            # cur_idx = Method.lsh2(Method.model, x_batch_train)
             if size > 1:
                 # send indices to root (server)
                 Method.exchange_idx()

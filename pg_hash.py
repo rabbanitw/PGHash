@@ -233,7 +233,6 @@ class PGHash(ModelHub):
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
         cur_idx = [i for i in range(bs)]
-        # prev_idx = np.arange(self.nl)
 
         for i in range(num_random_table):
             g_mat, ht_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
@@ -270,49 +269,6 @@ class PGHash(ModelHub):
         self.bias_idx = self.ci + self.bias_start
 
         return self.ci, cur_idx
-
-    def lsh2(self, model, data, num_random_table=10):
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=model.inputs,
-            outputs=model.layers[2].output,  # this is the post relu
-            # outputs=self.model.layers[1].output,  # this is the pre relu
-        )
-
-        in_layer = feature_extractor(data).numpy()
-        bs = in_layer.shape[0]
-        cur_idx = [i for i in range(bs)]
-        prev_idx = np.arange(self.nl)
-
-        for i in range(num_random_table):
-            g_mat, ht_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
-            for j in range(bs):
-
-                # Apply PG to input vector.
-                transformed_layer = np.heaviside(g_mat @ in_layer[j, :].T, 0)
-                # convert to base 2
-                hash_code = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-
-                if i == 0:
-                    cur_idx[j] = ht_dict[hash_code]
-                else:
-                    cur_idx[j] = np.intersect1d(cur_idx[j], ht_dict[hash_code])
-
-            chosen_idx = np.unique(np.concatenate(cur_idx))
-            if len(chosen_idx) < self.num_c_layers:
-                non_chosen = np.setdiff1d(prev_idx, chosen_idx)
-                break
-            prev_idx = chosen_idx
-
-        # try random sample first
-        rand = np.random.choice(non_chosen, size=(self.num_c_layers - len(chosen_idx)), replace=False)
-        self.ci = np.union1d(rand, chosen_idx).astype(np.int32)
-
-        # update indices with new current index
-        self.bias_idx = self.ci + self.bias_start
-
-        return self.ci
 
     def exchange_idx(self):
         if self.rank == 0:
