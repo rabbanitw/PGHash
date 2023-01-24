@@ -1,6 +1,5 @@
 import numpy as np
 import tensorflow as tf
-import time
 from lsh import pg, slide, pg_hashtable, slide_hashtable
 from mlp import SparseNeuralNetwork
 from misc import compute_accuracy_lsh
@@ -244,23 +243,36 @@ class PGHash(ModelHub):
 
             # Apply PG to input vector.
             transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
+
+            # convert  data to base 2 to remove repeats
+            base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
             for j in range(bs):
 
-                # compute hamming distances
-                # diff = hash_table - transformed_layer[:, j, np.newaxis]
-                # hamm_dists = np.count_nonzero(diff == 0, axis=0)/self.sdim
+                if base2_hash[j] in base2_hash[:j]:
+                    # if hamming distance is already computed
+                    h_idx = np.where(base2_hash[:j] == base2_hash[j])
+                    h_idx = h_idx[0][0]
+                    if i == 0:
+                        cur_idx[j] = cur_idx[h_idx]
+                    else:
+                        hamm_dists = cur_idx[h_idx][i, :]
+                        cur_idx[j] = np.vstack((cur_idx[j], hamm_dists))
 
-                hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
+                else:
+                    # compute hamming distances
+                    hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
 
-                # create list of average hamming distances for a single neuron
-                if i == 0:
-                    cur_idx[j] = hamm_dists
-                elif i < num_random_table - 1:
-                    cur_idx[j] += hamm_dists
+                    # create list of average hamming distances for a single neuron
+                    if i == 0:
+                        cur_idx[j] = hamm_dists
+                    else:
+                        cur_idx[j] = np.vstack((cur_idx[j], hamm_dists))
 
-                # compute the topk closest average hamming distances to neuron
-                if i == num_random_table - 1:
-                    cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
+                    # compute the topk closest average hamming distances to neuron
+                    if i == num_random_table - 1:
+                        if num_random_table > 1:
+                            cur_idx[j] = np.sum(cur_idx, axis=0)
+                        cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
 
         chosen_idx = np.unique(np.concatenate(cur_idx))
         if len(chosen_idx) > self.num_c_layers:
