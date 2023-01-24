@@ -103,13 +103,13 @@ def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1,
             Method.update_full_model(Method.model)
             # compute LSH
 
-            if iterations % args.steps_per_lsh == 0 or iterations == 1:
-                Method.lsh_tables()
+            # if iterations % args.steps_per_lsh == 0 or iterations == 1:
+            #    Method.lsh_tables()
 
-            cur_idx, per_sample_idx = Method.lsh(Method.model, x_batch_train)
+            # cur_idx, per_sample_idx = Method.lsh(Method.model, x_batch_train)
             # cur_idx, per_sample_idx = Method.lsh_initial(Method.model, x_batch_train)
             # cur_idx, per_sample_idx = Method.lsh_vanilla(Method.model, x_batch_train)
-            # cur_idx, per_sample_idx = Method.lsh_hamming(Method.model, x_batch_train)
+            cur_idx, per_sample_idx = Method.lsh_hamming(Method.model, x_batch_train)
             if size > 1:
                 # send indices to root (server)
                 Method.exchange_idx()
