@@ -220,7 +220,7 @@ class PGHash(ModelHub):
 
         return self.ci, [self.ci for _ in range(bs)]
 
-    def lsh_hamming(self, model, data, num_random_table=1):
+    def lsh_hamming(self, model, data, num_random_table=3):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -255,8 +255,11 @@ class PGHash(ModelHub):
                     if i == 0:
                         cur_idx[j] = cur_idx[h_idx]
                     else:
-                        hamm_dists = cur_idx[h_idx][i, :]
-                        cur_idx[j] = np.vstack((cur_idx[j], hamm_dists))
+                        if i == num_random_table - 1:
+                            cur_idx[j] = cur_idx[h_idx]
+                        else:
+                            hamm_dists = cur_idx[h_idx][i, :]
+                            cur_idx[j] = np.vstack((cur_idx[j], hamm_dists))
 
                 else:
                     # compute hamming distances
@@ -271,7 +274,7 @@ class PGHash(ModelHub):
                     # compute the topk closest average hamming distances to neuron
                     if i == num_random_table - 1:
                         if num_random_table > 1:
-                            cur_idx[j] = np.sum(cur_idx, axis=0)
+                            cur_idx[j] = np.sum(cur_idx[j], axis=0)
                         cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
 
         chosen_idx = np.unique(np.concatenate(cur_idx))
@@ -423,10 +426,17 @@ class PGHash(ModelHub):
 
     def exchange_idx(self):
         if self.rank == 0:
-            self.device_idxs = np.empty((self.size, len(self.ci)), dtype=np.int32)
-        MPI.COMM_WORLD.Gather(self.ci, self.device_idxs, root=0)
+            self.device_idxs = np.empty((self.size, self.num_c_layers), dtype=np.int32)
+        send_buf = -1*np.ones(self.num_c_layers, dtype=np.int32)
+        send_buf[:len(self.ci)] = self.ci
+        MPI.COMM_WORLD.Gather(send_buf, self.device_idxs, root=0)
         if self.rank == 0:
-            self.unique, self.count = np.unique(self.device_idxs.flatten(), return_counts=True)
+            temp = []
+            for dev in range(self.size):
+                dev_idx = self.device_idxs[dev, :]
+                temp.append(dev_idx[dev_idx != -1])
+            self.device_idxs = temp
+            self.unique, self.count = np.unique(np.concatenate(temp, dtype=np.int32), return_counts=True)
             self.unique_len = len(self.unique)
             self.unique_idx = np.empty(self.nl, dtype=np.int64)
             self.unique_idx[self.unique] = np.arange(self.unique_len)
@@ -462,19 +472,20 @@ class PGHash(ModelHub):
         if self.rank == 0:
             updated_final_layer = np.zeros((self.hls, self.unique_len))
             updated_final_bias = np.zeros(self.unique_len)
-            updated_final_layer[:, self.unique_idx[self.device_idxs[0, :]]] += send_final_layer
-            updated_final_bias[self.unique_idx[self.device_idxs[0, :]]] += send_final_bias
+            updated_final_layer[:, self.unique_idx[self.device_idxs[0]]] += send_final_layer
+            updated_final_bias[self.unique_idx[self.device_idxs[0]]] += send_final_bias
             t = time.time()
-            # for memory I didnt gather
+            # for memory I do not use mpi.gather
             for device in range(1, self.size):
                 recv_buffer_layer = np.empty(self.hls * self.num_c_layers)
                 recv_buffer_bias = np.empty(self.num_c_layers)
                 # receive and update final layer
                 MPI.COMM_WORLD.Recv(recv_buffer_layer, source=device)
-                updated_final_layer[:, self.unique_idx[self.device_idxs[device, :]]] += recv_buffer_layer.reshape(self.hls, self.num_c_layers)
+                updated_final_layer[:, self.unique_idx[self.device_idxs[device]]] \
+                    += recv_buffer_layer.reshape(self.hls, self.num_c_layers)
                 # receive and update final bias
                 MPI.COMM_WORLD.Recv(recv_buffer_bias, source=device)
-                updated_final_bias[self.unique_idx[self.device_idxs[device, :]]] += recv_buffer_bias
+                updated_final_bias[self.unique_idx[self.device_idxs[device]]] += recv_buffer_bias
             # perform uniform averaging
             updated_final_layer = updated_final_layer / self.count
             updated_final_bias = updated_final_bias / self.count
