@@ -348,6 +348,7 @@ class PGHash(ModelHub):
         # determine all the hash tables and gaussian matrices
         for i in range(self.num_tables):
             g_mat, ht_dict = slide_hashtable(self.final_dense, n, self.sdim)
+            # g_mat, ht_dict = pg_hashtable(self.final_dense, n, self.sdim)
 
             if i == 0:
                 gaussian_mats = g_mat
@@ -384,13 +385,24 @@ class PGHash(ModelHub):
                     cur_idx[j] = np.union1d(cur_idx[j], hash_idxs[j])
 
         chosen_idx = np.unique(np.concatenate(cur_idx))
+        print(len(chosen_idx))
         if len(chosen_idx) > self.num_c_layers:
             chosen_idx = np.sort(np.random.choice(chosen_idx, self.num_c_layers, replace=False))
+            for j in range(bs):
+                cur_idx[j] = np.intersect1d(chosen_idx, cur_idx[j]).astype(np.int32)
+        elif len(chosen_idx) < self.num_c_layers:
+            gap = self.num_c_layers - len(chosen_idx)
+            per_batch = int(gap / bs)
+            non_chosen = np.setdiff1d(np.arange(self.nl), chosen_idx)
+            random_fill = np.random.choice(non_chosen, gap, replace=False)
+            chosen_idx = np.union1d(chosen_idx, random_fill)
+            for j in range(bs):
+                if j == bs - 1:
+                    cur_idx[j] = np.union1d(cur_idx[j], random_fill[j * per_batch:]).astype(np.int32)
+                else:
+                    cur_idx[j] = np.union1d(cur_idx[j], random_fill[j * per_batch:(j + 1) * per_batch]).astype(np.int32)
 
-        for j in range(bs):
-            cur_idx[j] = np.intersect1d(chosen_idx, cur_idx[j]).astype(np.int32)
-
-        self.ci = chosen_idx
+        self.ci = chosen_idx.astype(np.int32)
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
