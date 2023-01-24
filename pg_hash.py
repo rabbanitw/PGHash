@@ -247,8 +247,10 @@ class PGHash(ModelHub):
             for j in range(bs):
 
                 # compute hamming distances
-                diff = hash_table - transformed_layer[:, j].reshape(self.sdim, 1)
-                hamm_dists = np.count_nonzero(diff == 0, axis=0)/self.sdim
+                # diff = hash_table - transformed_layer[:, j, np.newaxis]
+                # hamm_dists = np.count_nonzero(diff == 0, axis=0)/self.sdim
+
+                hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
 
                 # create list of average hamming distances for a single neuron
                 if i == 0:
@@ -258,7 +260,7 @@ class PGHash(ModelHub):
 
                 # compute the topk closest average hamming distances to neuron
                 if i == num_random_table - 1:
-                    cur_idx[j] = np.argsort(-cur_idx[j])[:self.num_c_layers]
+                    cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
 
         chosen_idx = np.unique(np.concatenate(cur_idx))
         if len(chosen_idx) > self.num_c_layers:
@@ -356,12 +358,12 @@ class PGHash(ModelHub):
 
         self.gaussian_mats = gaussian_mats
 
-    def lsh(self, data, num_random_table=50):
+    def lsh(self, model, data, num_random_table=50):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
-            inputs=self.model.inputs,
-            outputs=self.model.layers[2].output,  # this is the post relu
+            inputs=model.inputs,
+            outputs=model.layers[2].output,  # this is the post relu
             # outputs=self.model.layers[1].output,  # this is the pre relu
         )
 
