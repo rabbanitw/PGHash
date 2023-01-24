@@ -19,7 +19,6 @@ def pg_hashtable(weights, n, sdim):
 
     # Apply PGHash to weights.
     hash_table = np.heaviside(pg_gaussian@weights, 0)
-
     # convert to base 2
     hash_table = hash_table.T.dot(1 << np.arange(hash_table.T.shape[-1]))
 
@@ -28,8 +27,18 @@ def pg_hashtable(weights, n, sdim):
     for k, v in zip(hash_table, np.arange(len(hash_table))):
         hash_dict[k].append(v)
     # make the dictionary contain numpy arrays and not a list (for faster slicing)
+    max = np.zeros(len(hash_dict))
+    max_key = None
+    c = 0
     for key in hash_dict:
         hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
+        if len(hash_dict[key]) > np.max(max):
+            max_key = key
+        max[c] = len(hash_dict[key])
+        c += 1
+    #print(-np.sort(-max))
+    #print(max_key)
+    #print('=====')
 
     return pg_gaussian, hash_dict
 

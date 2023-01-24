@@ -4,7 +4,9 @@ from dataloader import load_extreme_data
 from mpi4py import MPI
 from misc import AverageMeter, Recorder
 from pg_hash import PGHash, SLIDE
-from pg_train import pg_train, slide_train, regular_train
+from pg_train import pg_train
+from regular_train import regular_train
+from slide_train import slide_train
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
