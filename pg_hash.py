@@ -220,7 +220,7 @@ class PGHash(ModelHub):
 
         return self.ci, [self.ci for _ in range(bs)]
 
-    def lsh_hamming(self, model, data, num_random_table=3):
+    def lsh_hamming(self, model, data, num_random_table=5):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
