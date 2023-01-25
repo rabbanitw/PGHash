@@ -153,17 +153,23 @@ def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1,
                     y_pred = Method.model(x)
                     # y_pred = tf.math.multiply(pred_mask, y_pred)
                     # loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-
+                    # custom loss
                     max_logit = tf.math.maximum(tf.math.reduce_max(y_pred, axis=1, keepdims=True), 0)
-                    e_logit = tf.math.maximum(tf.math.exp(y_pred - max_logit), 1e-7)
-                    outside_e_logit = tf.math.maximum(tf.math.exp(0 - max_logit), 1e-7)
-                    e_sum = (num_diff*outside_e_logit + tf.math.reduce_sum(e_logit, axis=1, keepdims=True))
-                    log_sm = tf.math.log(e_logit / e_sum)
-
+                    # inner exponential sum
+                    inner_exp_sum = tf.reduce_sum(tf.math.exp(y_pred - max_logit), axis=1, keepdims=True)
+                    # outer exponential sum
+                    outside_e_logit = tf.math.maximum(tf.math.exp(-max_logit), 1e-12)
+                    outer_exp_sum = num_diff * outside_e_logit
+                    # sum of inner and outer
+                    e_sum = inner_exp_sum + outer_exp_sum
+                    # log of inner and outer sum
+                    log_sum_exp = tf.math.log(e_sum)
+                    log_sm = y_pred - max_logit - log_sum_exp
+                    # inner loss (using mask)
                     inner = tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True)
-                    outer = leftover*label_frac*tf.math.log(outside_e_logit / e_sum)
+                    # outer loss
+                    outer = leftover * label_frac * tf.math.log(outside_e_logit / e_sum)
                     loss_value = -tf.reduce_mean(inner + outer)
-
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
