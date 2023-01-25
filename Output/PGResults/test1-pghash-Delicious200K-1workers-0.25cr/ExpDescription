@@ -1,0 +1,1 @@
+Namespace(name='test1', dataset='Delicious200K', graph_type='fully_connected', hash_type='pghash', randomSeed=1203, sdim=9, num_tables=50, lr=0.0001, cr=0.25, train_bs=128, test_bs=2048, steps_per_lsh=50, steps_per_test=100, epochs=5, hidden_layer_size=128, q=1)
