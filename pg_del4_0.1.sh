@@ -11,7 +11,7 @@
 #SBATCH --mem 128gb         # memory required by job; if unit is not specified MB will be assumed
 #SBATCH --nice=0
 #SBATCH --mail-type=END   # Valid type values are NONE, BEGIN, END, FAIL, REQUEUE
-#SBATCH --nodelist=cml21
+#SBATCH --nodelist=cml02
 
 module purge
 module load mpi

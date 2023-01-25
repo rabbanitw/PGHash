@@ -255,7 +255,7 @@ class PGHash(ModelHub):
                     if i == 0:
                         cur_idx[j] = cur_idx[h_idx]
                     else:
-                        if i == num_random_table - 1:
+                        if i == self.num_tables - 1:
                             cur_idx[j] = cur_idx[h_idx]
                         else:
                             hamm_dists = cur_idx[h_idx][i, :]
@@ -272,8 +272,8 @@ class PGHash(ModelHub):
                         cur_idx[j] = np.vstack((cur_idx[j], hamm_dists))
 
                     # compute the topk closest average hamming distances to neuron
-                    if i == num_random_table - 1:
-                        if num_random_table > 1:
+                    if i == self.num_tables - 1:
+                        if self.num_tables > 1:
                             cur_idx[j] = np.sum(cur_idx[j], axis=0)
                         cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
 
