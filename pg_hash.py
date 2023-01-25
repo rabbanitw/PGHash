@@ -220,7 +220,7 @@ class PGHash(ModelHub):
 
         return self.ci, [self.ci for _ in range(bs)]
 
-    def lsh_hamming(self, model, data, num_random_table=5):
+    def lsh_hamming(self, model, data):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -233,7 +233,7 @@ class PGHash(ModelHub):
         bs = in_layer.shape[0]
         cur_idx = [i for i in range(bs)]
 
-        for i in range(num_random_table):
+        for i in range(self.num_tables):
             # create gaussian matrix
             pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
                                                                     int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
