@@ -231,7 +231,7 @@ class PGHash(ModelHub):
 
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
-        cur_idx = [i for i in range(bs)]
+        cur_idx = [np.empty((self.num_tables, self.nl)) for _ in range(bs)]
 
         for i in range(self.num_tables):
             # create gaussian matrix
@@ -252,37 +252,33 @@ class PGHash(ModelHub):
                     # if hamming distance is already computed
                     h_idx = np.where(base2_hash[:j] == base2_hash[j])
                     h_idx = h_idx[0][0]
-                    if i == 0:
+                    if i == self.num_tables - 1:
                         cur_idx[j] = cur_idx[h_idx]
                     else:
-                        if i == self.num_tables - 1:
-                            cur_idx[j] = cur_idx[h_idx]
-                        else:
-                            hamm_dists = cur_idx[h_idx][i, :]
-                            cur_idx[j] = np.vstack((cur_idx[j], hamm_dists))
+                        cur_idx[j][i, :] = cur_idx[h_idx][i, :]
 
                 else:
                     # compute hamming distances
                     hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
 
                     # create list of average hamming distances for a single neuron
-                    if i == 0:
-                        cur_idx[j] = hamm_dists
-                    else:
-                        cur_idx[j] = np.vstack((cur_idx[j], hamm_dists))
+                    cur_idx[j][i, :] = hamm_dists
 
                     # compute the topk closest average hamming distances to neuron
                     if i == self.num_tables - 1:
                         if self.num_tables > 1:
                             cur_idx[j] = np.sum(cur_idx[j], axis=0)
-                        cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
+                            cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
+                        else:
+                            cur_idx[j] = np.argsort(cur_idx[j].flatten())[:self.num_c_layers]
 
         chosen_idx = np.unique(np.concatenate(cur_idx))
+
         if len(chosen_idx) > self.num_c_layers:
             chosen_idx = np.sort(np.random.choice(chosen_idx, self.num_c_layers, replace=False))
 
         for j in range(bs):
-            cur_idx[j] = np.intersect1d(chosen_idx, cur_idx[j]).astype(np.int32)
+            cur_idx[j] = np.intersect1d(chosen_idx, cur_idx[j])
 
         self.ci = chosen_idx
 

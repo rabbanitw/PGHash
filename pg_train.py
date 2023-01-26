@@ -64,31 +64,26 @@ def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1,
 
             batches_per_q = np.ceil(x_batch_train.shape[0] / args.train_bs).astype(np.int32)
 
-            lsh_init = time.time()
-
             # update full model
             Method.update_full_model(Method.model)
             # compute LSH
 
+            # possible LSH methods, Hamming is superior
             # if iterations % args.steps_per_lsh == 0 or iterations == 1:
             #    Method.lsh_tables()
-
             # cur_idx, per_sample_idx = Method.lsh(Method.model, x_batch_train)
             # cur_idx, per_sample_idx = Method.lsh_initial(Method.model, x_batch_train)
             # cur_idx, per_sample_idx = Method.lsh_vanilla(Method.model, x_batch_train)
+
+            lsh_init = time.time()
             cur_idx, per_sample_idx = Method.lsh_hamming(Method.model, x_batch_train)
+            lsh_time = time.time() - lsh_init
 
             if size > 1:
                 # send indices to root (server)
                 Method.exchange_idx()
             # update model
             Method.update_model()
-            # when updating model I need to restart optimizer for some reason...
-            # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)  # might need to restart optimizer
-            # reset the correct iteration after re-initializing
-            # optimizer.iterations = tf.Variable(iterations-1, dtype=tf.int64, name='iter')
-
-            lsh_time = time.time() - lsh_init
 
             for sub_batch in range(batches_per_q):
 
