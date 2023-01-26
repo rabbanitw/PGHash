@@ -50,12 +50,12 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
             batch = x_batch_train.get_shape()[0]
             y_true = tf.sparse.to_dense(y_batch_train)
             # make each row a valid probability distribution
-            nz = tf.reshape(tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32), [batch, 1])
+            nz = tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
             y_true = y_true / nz
 
             # perform gradient update
             with tf.GradientTape() as tape:
-                y_pred = model(x_batch_train, training=True)
+                y_pred = model(x_batch_train)
                 loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
 
             # apply backpropagation after setting non-active weights to zero
