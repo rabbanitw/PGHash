@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import argparse
 from dataloader import load_extreme_data
-from Other.communicators import CentralizedSGD
+from Old.Other.communicators import CentralizedSGD
 from mpi4py import MPI
 from misc import AverageMeter, Recorder, compute_accuracy_lsh
 from pg_hash import PGHash
