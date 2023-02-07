@@ -13,27 +13,6 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
-def train(rank, size, PGHash, optimizer, train_data, test_data, num_labels, num_features, args, method):
-
-    # initialize meters
-    top1 = AverageMeter()
-    test_top1 = AverageMeter()
-    losses = AverageMeter()
-    recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
-
-    # begin training once all devices are ready
-    MPI.COMM_WORLD.Barrier()
-
-    # begin training
-    if method == 'PGHash':
-        pg_train(rank, size, PGHash, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
-             num_features)
-    elif method == 'Regular':
-        regular_train(rank, size, PGHash, optimizer, train_data, test_data, losses, top1, recorder, args, num_labels)
-    elif method == 'SLIDE':
-        slide_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels)
-
-
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
@@ -135,8 +114,3 @@ if __name__ == '__main__':
         else:
             print('ERROR: No Method Selected')
             exit()
-
-
-
-        # begin training
-        train(rank, size, Method, optimizer, train_data, test_data, n_labels, n_features, args, method)
