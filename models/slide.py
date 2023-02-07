@@ -2,8 +2,8 @@ import numpy as np
 import tensorflow as tf
 from lsh import slide, slide_hashtable
 from models.base import ModelHub
-from misc import compute_accuracy_lsh
-from mlp import SparseNeuralNetwork
+from util.misc import compute_accuracy_lsh
+from util.mlp import SparseNeuralNetwork
 
 
 class SLIDE(ModelHub):

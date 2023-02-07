@@ -1,11 +1,10 @@
 import tensorflow as tf
 import numpy as np
 import argparse
-from dataloader import load_extreme_data
+from util.dataloader import load_extreme_data
 from mpi4py import MPI
-from misc import AverageMeter, Recorder, compute_accuracy_lsh
+from util.misc import AverageMeter, Recorder, compute_accuracy_lsh
 from PGHashTest import PGHash
-from mlp import SparseNeuralNetwork
 import time
 import resource
 import os

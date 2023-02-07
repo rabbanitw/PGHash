@@ -2,8 +2,8 @@ import numpy as np
 import tensorflow as tf
 from mpi4py import MPI
 from models.base import ModelHub
-from mlp import SparseNeuralNetwork
-from misc import compute_accuracy_lsh
+from util.mlp import SparseNeuralNetwork
+from util.misc import compute_accuracy_lsh
 import time
 
 

@@ -1,8 +1,8 @@
 import tensorflow as tf
 import argparse
-from dataloader import load_extreme_data
+from util.dataloader import load_extreme_data
 from mpi4py import MPI
-from misc import AverageMeter, Recorder
+from util.misc import AverageMeter, Recorder
 from models.pghash import PGHash
 from models.slide import SLIDE
 from models.dense import ModelHub

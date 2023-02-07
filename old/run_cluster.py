@@ -1,9 +1,9 @@
 import tensorflow as tf
 import numpy as np
 import argparse
-from dataloader import load_extreme_data
+from util.dataloader import load_extreme_data
 from train_cluster import train
-from mlp import SparseNeuralNetwork
+from util.mlp import SparseNeuralNetwork
 from unpack import get_model_architecture
 from mpi4py import MPI
 

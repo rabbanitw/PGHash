@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import time
-from misc import compute_accuracy_lsh
+from util.misc import compute_accuracy_lsh
 
 
 def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size):

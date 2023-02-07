@@ -2,8 +2,8 @@ import numpy as np
 import tensorflow as tf
 import time
 from lsh2 import pg_avg, pg_vanilla, slide_avg, slide_vanilla
-from mlp import SparseNeuralNetwork
-from misc import compute_accuracy_lsh
+from util.mlp import SparseNeuralNetwork
+from util.misc import compute_accuracy_lsh
 from mpi4py import MPI
 
 

@@ -1,10 +1,10 @@
 import tensorflow as tf
 import numpy as np
 import argparse
-from dataloader import load_extreme_data
+from util.dataloader import load_extreme_data
 from old.train_cluster import train
 from old.Other.communicators import CentralizedSGD, LSHCentralizedSGD
-from mlp import SparseNeuralNetwork
+from util.mlp import SparseNeuralNetwork
 from old.unpack import get_model_architecture, flatten_weights
 from mpi4py import MPI
 import os

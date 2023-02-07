@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from misc import AverageMeter, Recorder
+from util.misc import AverageMeter, Recorder
 from lsh2 import pg_avg, pg_vanilla, slide_avg, slide_vanilla
 from mpi4py import MPI
 import time

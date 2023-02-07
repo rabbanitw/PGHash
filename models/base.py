@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from mlp import SparseNeuralNetwork
+from util.mlp import SparseNeuralNetwork
 from mpi4py import MPI
 
 

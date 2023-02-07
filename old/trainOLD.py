@@ -1,9 +1,9 @@
 import tensorflow as tf
 import numpy as np
-from misc import compute_accuracy, AverageMeter, Recorder
+from util.misc import compute_accuracy, AverageMeter, Recorder
 from unpack import get_sub_model, get_full_dense, get_model_architecture, unflatten_weights
 from lsh2 import pg_avg, pg_vanilla, slide_avg, slide_vanilla
-from mlp import SparseNeuralNetwork
+from util.mlp import SparseNeuralNetwork
 from mpi4py import MPI
 import time
 
