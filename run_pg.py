@@ -5,7 +5,7 @@ from mpi4py import MPI
 from util.misc import AverageMeter, Recorder
 from models.pghash import PGHash
 from models.slide import SLIDE
-from models.dense import ModelHub
+from models.dense import Dense
 from train.pg_train import pg_train
 from train.regular_train import regular_train
 from train.slide_train import slide_train
@@ -106,7 +106,7 @@ if __name__ == '__main__':
             slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
 
         elif method == 'Regular':
-            Method = ModelHub(n_labels, n_features, hls, sdim, num_tables, cr, hash_type, rank, size, args.q, 1 / size)
+            Method = Dense(n_labels, n_features, hls, sdim, num_tables, cr, rank, size, args.q, 1 / size)
             # begin training once all devices are ready
             MPI.COMM_WORLD.Barrier()
             regular_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, recorder, args)

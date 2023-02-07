@@ -4,13 +4,11 @@ from models.base import ModelHub
 import time
 
 
-class PGHash(ModelHub):
+class Dense(ModelHub):
 
-    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
-                 rank, size, q, influence, i1, i2):
+    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, rank, size, q, influence):
 
-        super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, hash_type,
-                 rank, size, q, influence, i1, i2)
+        super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, rank, size, q, influence)
 
     def simple_average(self, model):
 
