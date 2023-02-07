@@ -97,19 +97,19 @@ if __name__ == '__main__':
             Method = PGHash(n_labels, n_features, rank, size, 1 / size, args)
             # begin training once all devices are ready
             MPI.COMM_WORLD.Barrier()
-            pg_train(rank, size, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
+            pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
 
         elif method == 'SLIDE':
             Method = SLIDE(n_labels, n_features, rank, size, 1 / size, args)
             # begin training once all devices are ready
             MPI.COMM_WORLD.Barrier()
-            slide_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
+            slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
 
         elif method == 'Regular':
             Method = ModelHub(n_labels, n_features, hls, sdim, num_tables, cr, hash_type, rank, size, args.q, 1 / size)
             # begin training once all devices are ready
             MPI.COMM_WORLD.Barrier()
-            regular_train(rank, size, PGHash, optimizer, train_data, test_data, losses, top1, recorder, args)
+            regular_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, recorder, args)
 
         else:
             print('ERROR: No Method Selected')
