@@ -2,10 +2,10 @@ import tensorflow as tf
 import numpy as np
 import argparse
 from dataloader import load_extreme_data
+from old.Other.communicators import CentralizedSGD
 from mpi4py import MPI
 from misc import AverageMeter, Recorder, compute_accuracy_lsh
-from PGHashTest import PGHash
-from mlp import SparseNeuralNetwork
+from models.pghash import PGHash
 import time
 import resource
 import os
@@ -13,11 +13,15 @@ import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
-def flatten_weights(weight_list):
-    return np.concatenate(list(weight_list[i].flatten() for i in range(len(weight_list))))
+def train(rank, PGHash, optimizer, communicator, train_data, test_data, num_labels, args):
 
-
-def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
+    def train_step(x, y):
+        with tf.GradientTape() as tape:
+            y_pred = model(x, training=True)
+            loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_pred))
+        grads = tape.gradient(loss_value, model.trainable_weights)
+        optimizer.apply_gradients(zip(grads, model.trainable_weights))
+        return loss_value, y_pred
 
     def get_partial_label(y_data, used_idx, batch_size, full_labels=num_labels):
         true_idx = y_data.indices.numpy()
@@ -36,7 +40,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
     lsh = args.lsh
     steps_per_lsh = args.steps_per_lsh
     cur_idx = None
-    model = PGHash.return_model()
+    model = None
 
     # training parameters
     epochs = args.epochs
@@ -58,33 +62,24 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
         # Iterate over the batches of the dataset.
         for step, (x_batch_train, y_batch_train) in enumerate(train_data):
 
-            init_time = time.time()
-
-            # communication
-            model, comm_time = PGHash.communicate(model)
-
-            comm_time = 0
-            if lsh and step % steps_per_lsh == 0:
-                lsh_init = time.time()
-                # update full model
-                PGHash.update_full_model(model)
+            if step == 0:
                 # compute LSH
                 cur_idx = PGHash.run_lsh(x_batch_train)
                 # get new model
                 model = PGHash.get_new_model()
-                lsh_time = time.time()-lsh_init
-            else:
-                lsh_time = 0
 
             get_memory(fname)
 
+            init_time = time.time()
+
             batch = x_batch_train.get_shape()[0]
             y_true = get_partial_label(y_batch_train, cur_idx, batch)
-            with tf.GradientTape() as tape:
-                y_pred = model(x_batch_train, training=True)
-                loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-            grads = tape.gradient(loss_value, model.trainable_weights)
-            optimizer.apply_gradients(zip(grads, model.trainable_weights))
+            loss_value, y_pred = train_step(x_batch_train, y_true)
+
+            comm_time = 0
+            lsh_time = 0
+            # communication happens here
+            # comm_time = communicator.communicate(model)
 
             # compute accuracy for the minibatch (top 1) & store accuracy and loss values
             rec_init = time.time()
@@ -93,7 +88,7 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
             acc1 = compute_accuracy_lsh(y_pred, y_batch_train, cur_idx, num_labels)
             top1.update(acc1, batch)
             record_time = time.time() - rec_init
-            comp_time = (time.time() - init_time) - (lsh_time + record_time + comm_time)
+            comp_time = (time.time() - init_time) - (lsh_time + record_time)
 
             recorder.add_new(comp_time+comm_time, comp_time, comm_time, lsh_time, acc1, test_acc, loss_value.numpy(),
                              top1.avg, losses.avg)
@@ -103,46 +98,15 @@ def train(rank, PGHash, optimizer, train_data, test_data, num_labels, args):
 
             total_batches += batch
             # Log every 200 batches.
-            if step % 1 == 0:
+            if step % 10 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
                     % (rank, step, (comp_time + comm_time), loss_value.numpy(), acc1, total_batches)
                 )
 
-            if step % 5 == 0:
+            if step % 20 == 0:
                 if rank == 0:
-
-                    '''
-                    PGHash.update_full_model(model)
-                    fmw = PGHash.return_full_model()
-                    fm = SparseNeuralNetwork([782585, 128, num_labels])
-                    # find shape and total elements for each layer of the resnet model
-                    model_weights = fm.get_weights()
-                    layer_shapes = []
-                    layer_sizes = []
-                    for i in range(len(model_weights)):
-                        layer_shapes.append(model_weights[i].shape)
-                        layer_sizes.append(model_weights[i].size)
-                    unflatten_model = []
-                    start_idx = 0
-                    end_idx = 0
-                    for i in range(len(layer_shapes)):
-                        layer_size = layer_sizes[i]
-                        end_idx += layer_size
-                        unflatten_model.append(fmw[start_idx:end_idx].reshape(layer_shapes[i]))
-                        start_idx += layer_size
-                    fm.set_weights(unflatten_model)
-                    for (x_batch_test, y_batch_test) in test_data:
-                        test_batch = x_batch_test.get_shape()[0]
-                        # y_pred_test = model(x_batch_test, training=False)
-                        y_pred_test = fm(x_batch_test, training=False)
-                        test_acc = compute_accuracy_lsh(y_pred_test, y_batch_test, cur_idx, num_labels)
-                        test_top1.update(test_acc, test_batch)
-                    '''
-
-                    PGHash.update_full_model(model)
                     test_acc = PGHash.test_full_model(test_data, test_top1)
-
                     print("Step %d: Top 1 Test Accuracy %.4f" % (step, test_acc))
                     recorder.add_testacc(test_acc)
                     test_top1.reset()
@@ -162,12 +126,12 @@ if __name__ == '__main__':
     parser.add_argument('--graph_type', type=str, default='ring')
     parser.add_argument('--hash_type', type=str, default='slide_avg')
     parser.add_argument('--randomSeed', type=int, default=1203)
-    parser.add_argument('--lsh', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--lsh', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--sdim', type=int, default=8)
     parser.add_argument('--num_tables', type=int, default=50)
     parser.add_argument('--lr', type=int, default=1e-3)
     parser.add_argument('--cr', type=float, default=0.1)
-    parser.add_argument('--train_bs', type=int, default=128)
+    parser.add_argument('--train_bs', type=int, default=32)
     parser.add_argument('--test_bs', type=int, default=2048)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
     parser.add_argument('--epochs', type=int, default=5)
@@ -204,8 +168,8 @@ if __name__ == '__main__':
     test_bs = args.test_bs
     epochs = args.epochs
     hls = args.hidden_layer_size
-    train_data_path = 'Data/' + args.dataset + '/train.txt'
-    test_data_path = 'Data/' + args.dataset + '/test.txt'
+    train_data_path = 'data/' + args.dataset + '/train.txt'
+    test_data_path = 'data/' + args.dataset + '/test.txt'
 
     print('Loading and partitioning data...')
     train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, train_bs, test_bs,
@@ -214,16 +178,16 @@ if __name__ == '__main__':
     print('Initializing model...')
 
     # initialize model
-    PGHash = PGHash(n_labels, n_features, hls, sdim, num_tables, cr, hash_type, rank, size, 1 / size, 0, 1)
+    PGHash = PGHash(n_labels, n_features, hls, sdim, num_tables, cr, hash_type)
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
     layer_shapes, layer_sizes = PGHash.get_model_architecture()
 
     # initialize D-SGD or Centralized SGD
     # communicator = DecentralizedSGD(rank, size, MPI.COMM_WORLD, G, layer_shapes, layer_sizes, 0, 1)
-    # communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
+    communicator = CentralizedSGD(rank, size, MPI.COMM_WORLD, 1 / size, layer_shapes, layer_sizes, 0, 1)
 
     print('Beginning training...')
-    saveFolder = train(rank, PGHash, optimizer, train_data, test_data, n_labels, args)
+    saveFolder = train(rank, PGHash, optimizer, communicator, train_data, test_data, n_labels, args)
 
     # recv_indices = None
     # if rank == 0:

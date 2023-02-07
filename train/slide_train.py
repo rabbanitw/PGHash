@@ -1,7 +1,6 @@
 import numpy as np
 import tensorflow as tf
 import time
-from misc import compute_accuracy_lsh
 
 
 def slide_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
@@ -21,20 +20,19 @@ def slide_partial_label(sparse_y, sub_idx, batch_size, full_num_labels):
     return tf.sparse.to_dense(sparse_y), tf.convert_to_tensor(mask, dtype=tf.float32)
 
 
-def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels):
+def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args):
 
     # parameters
     total_batches = 0
     test_acc = np.NaN
     acc1_metric = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
-    # full_idx = np.arange(num_labels)
     iterations = 1
 
     # update indices with new current index
-    Method.ci = np.arange(num_labels)
+    Method.ci = np.arange(Method.nl)
     Method.bias_idx = Method.ci + Method.bias_start
 
-    for epoch in range(args.epochs):
+    for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
 
         # shuffle training data each epoch
@@ -72,7 +70,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
 
             # transform sparse label to dense sub-label
             batch = x_batch_train.get_shape()[0]
-            y_true, pred_mask = slide_partial_label(y_batch_train, batch_idxs, batch, num_labels)
+            y_true, pred_mask = slide_partial_label(y_batch_train, batch_idxs, batch, Method.nl)
             # make each row a valid probability distribution
             nz = tf.reshape(tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32), [batch, 1])
             y_true = y_true / nz

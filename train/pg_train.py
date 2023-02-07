@@ -5,15 +5,6 @@ from misc import compute_accuracy_lsh
 
 
 def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size):
-    '''
-    Takes a sparse full label and converts it into a dense sub-label corresponding to the output nodes in the
-    sub-architecture for a given device
-    :param sparse_y: Sparse full labels
-    :param sub_idx: Indices for which output nodes are used/activated in the sub-architecture
-    :param batch_size: Batch size
-    :param full_num_labels: Total number of output nodes
-    :return: Dense sub-label corresponding to given output nodes
-    '''
 
     y_true = tf.sparse.to_dense(sparse_y).numpy()
 
@@ -37,8 +28,7 @@ def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size):
            tf.convert_to_tensor(1/nz, dtype=tf.float32)
 
 
-def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
-             num_features):
+def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args):
 
     # parameters
     total_batches = 0
@@ -50,10 +40,11 @@ def pg_train(rank, size, Method, train_data, test_data, losses, top1, test_top1,
     else:
         smartavg = True
 
+    num_labels = Method.nl
+    num_features = Method.nf
     num_diff = tf.constant(num_labels - Method.num_c_layers, dtype=tf.float32)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
 
-    for epoch in range(args.epochs):
+    for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
 
         # shuffle training data each epoch

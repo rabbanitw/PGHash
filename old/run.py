@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 from dataloader import load_extreme_data
 from trainOLD import train
-from Old.Other.communicators import CentralizedSGD, LSHCentralizedSGD
+from old.Other.communicators import CentralizedSGD, LSHCentralizedSGD
 from mlp import SparseNeuralNetwork
 from unpack import get_model_architecture, flatten_weights
 from mpi4py import MPI
@@ -59,8 +59,8 @@ if __name__ == '__main__':
     batch_size = args.batch_size
     epochs = args.epochs
     hls = args.hidden_layer_size
-    train_data_path = 'Data/' + args.dataset + '/train.txt'
-    test_data_path = 'Data/' + args.dataset + '/test.txt'
+    train_data_path = 'data/' + args.dataset + '/train.txt'
+    test_data_path = 'data/' + args.dataset + '/test.txt'
 
     print('Loading and partitioning data...')
     train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size,

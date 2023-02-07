@@ -3,7 +3,7 @@ import tensorflow as tf
 import time
 
 
-def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, recorder, args, num_labels):
+def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, recorder, args):
 
     # parameters
     total_batches = 0
@@ -15,7 +15,7 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
     iterations = 1
 
     # update indices with new current index
-    Method.ci = np.arange(num_labels)
+    Method.ci = np.arange(Method.nl)
     Method.bias_idx = Method.ci + Method.bias_start
     # get model
     model = Method.model

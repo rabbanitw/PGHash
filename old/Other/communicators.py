@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from mpi4py import MPI
-from Old.unpack import flatten_weights, unflatten_weights, update_full_model, get_sub_model
+from old.unpack import flatten_weights, unflatten_weights, update_full_model, get_sub_model
 
 
 class DecentralizedSGD:

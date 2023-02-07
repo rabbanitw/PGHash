@@ -2,10 +2,10 @@ import tensorflow as tf
 import numpy as np
 import argparse
 from dataloader import load_extreme_data
-from Old.train_cluster import train
-from Old.Other.communicators import CentralizedSGD, LSHCentralizedSGD
+from old.train_cluster import train
+from old.Other.communicators import CentralizedSGD, LSHCentralizedSGD
 from mlp import SparseNeuralNetwork
-from Old.unpack import get_model_architecture, flatten_weights
+from old.unpack import get_model_architecture, flatten_weights
 from mpi4py import MPI
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -74,8 +74,8 @@ if __name__ == '__main__':
     batch_size = args.batch_size
     epochs = args.epochs
     hls = args.hidden_layer_size
-    train_data_path = 'Data/' + args.dataset + '/train.txt'
-    test_data_path = 'Data/' + args.dataset + '/test.txt'
+    train_data_path = 'data/' + args.dataset + '/train.txt'
+    test_data_path = 'data/' + args.dataset + '/test.txt'
 
     print('Loading and partitioning data...')
     with tf.device(gpu):
