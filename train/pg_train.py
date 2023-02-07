@@ -76,7 +76,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             # update model
             Method.update_model()
 
-            for sub_batch in range(batches_per_q):
+            for idx, sub_batch in enumerate(range(batches_per_q)):
 
                 # compute test accuracy every X steps
                 if iterations % args.steps_per_test == 0:
@@ -92,6 +92,10 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 y = tf.sparse.slice(y_batch_train, start=[sub_batch * args.train_bs, 0],
                                     size=[args.train_bs, num_labels])
 
+                # don't count LSH time towards subsequent batches of the mega batch
+                if idx == 1:
+                    lsh_time = 0
+
                 init_time = time.time()
 
                 # communicate models amongst devices (if multiple devices are present)
@@ -106,8 +110,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 # perform gradient update
                 with tf.GradientTape() as tape:
                     y_pred = Method.model(x)
-                    # loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-                    # '''
                     # custom loss
                     max_logit = tf.math.maximum(tf.math.reduce_max(y_pred, axis=1, keepdims=True), 0)
                     # inner exponential sum
@@ -125,7 +127,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     # outer loss
                     outer = leftover * label_frac * tf.math.log(outside_e_logit / e_sum)
                     loss_value = -tf.reduce_mean(inner + outer)
-                    # '''
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
@@ -142,7 +143,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     lsh_time = 0
 
                 # store and save accuracy and loss values
-                recorder.add_new(comp_time + comm_time, comp_time, comm_time, lsh_time, acc1, test_acc,
+                recorder.add_new(comp_time + comm_time + lsh_time, comp_time, comm_time, lsh_time, acc1, test_acc,
                                  loss_value.numpy(), top1.avg, losses.avg)
                 recorder.save_to_file()
 
