@@ -15,6 +15,7 @@ def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size):
     mask = np.zeros((batch_size, y_true.shape[1]))
     for j in range(batch_size):
         mask[j, sample_idx[j]] = 1
+        # mask[j, sample_idx[j, :]] = 1
 
     # mask the true label
     y_true = y_true * mask

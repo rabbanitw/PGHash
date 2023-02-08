@@ -7,6 +7,22 @@ from util.misc import compute_accuracy_lsh
 import time
 
 
+def get_unique_N(iterable, N):
+    """Yields (in order) the first N unique elements of iterable.
+    Might yield less if data too short."""
+    seen = set()
+    i = 0
+    for e in iterable:
+        i += 1
+        if e in seen:
+            continue
+        seen.add(e)
+        yield e
+        if len(seen) == N:
+            yield i
+            return
+
+
 class PGHash(ModelHub):
 
     def __init__(self, num_labels, num_features, rank, size, influence, args):
@@ -49,7 +65,8 @@ class PGHash(ModelHub):
 
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
-        cur_idx = [np.empty((self.num_tables, self.nl)) for _ in range(bs)]
+        bs_range = np.arange(bs)
+        cur_idx = [np.empty((self.num_tables, self.nl)) for _ in bs_range]
 
         for i in range(self.num_tables):
             # create gaussian matrix
@@ -64,7 +81,7 @@ class PGHash(ModelHub):
 
             # convert  data to base 2 to remove repeats
             base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-            for j in range(bs):
+            for j in bs_range:
 
                 if base2_hash[j] in base2_hash[:j]:
                     # if hamming distance is already computed
@@ -90,19 +107,40 @@ class PGHash(ModelHub):
                         else:
                             cur_idx[j] = np.argsort(cur_idx[j].flatten())[:self.num_c_layers]
 
-        chosen_idx = np.unique(np.concatenate(cur_idx))
+        # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
+        cur_idxs = np.vstack(cur_idx)
+        cur_idx_1d = cur_idxs.T.flatten()
 
-        if len(chosen_idx) > self.num_c_layers:
-            chosen_idx = np.sort(np.random.choice(chosen_idx, self.num_c_layers, replace=False))
+        # get first unique K values
+        k = list(get_unique_N(cur_idx_1d, self.num_c_layers))
+        total_vals = k[-1]
+        chosen_idx = np.sort(k[:-1])
 
         for j in range(bs):
+            cur_idx[j] = np.intersect1d(chosen_idx, cur_idxs[j, :])
+
+        #ceil = np.ceil(total_vals/bs).astype(int)
+        #diff = ceil*bs - self.num_c_layers
+        #cur_idx = cur_idx[:, :ceil]
+        # fill ragged parts with same indices as column before
+        #cur_idx[-diff:, -1] = cur_idx[-diff:, -2]
+
+
+        # current method is slow because of unique and looping intersection. Finding a greedy approach
+        '''
+        chosen_idx = np.unique(np.concatenate(cur_idx))
+        if len(chosen_idx) > self.num_c_layers:
+            chosen_idx = np.sort(np.random.choice(chosen_idx, self.num_c_layers, replace=False))
+        for j in range(bs):
             cur_idx[j] = np.intersect1d(chosen_idx, cur_idx[j])
+        '''
 
         self.ci = chosen_idx
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
 
+        # return self.ci, mask
         return self.ci, cur_idx
 
     def exchange_idx(self):
