@@ -4,7 +4,7 @@ import time
 from util.misc import compute_accuracy_lsh
 
 
-def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size, idx):
+def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size, args, idx):
 
     y_true = tf.sparse.to_dense(sparse_y).numpy()
 
@@ -14,7 +14,7 @@ def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size, idx):
 
     mask = np.zeros((batch_size, y_true.shape[1]))
     for j in range(batch_size):
-        mask[j, sample_idx[j + idx*batch_size]] = 1
+        mask[j, sample_idx[j + idx*args.train_bs]] = 1
         # mask[j, sample_idx[j + idx*batch_size, :]] = 1
 
     # mask the true label
@@ -106,7 +106,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 # transform sparse label to dense sub-label
                 batch = x.get_shape()[0]
                 # y_true = get_partial_label(y, cur_idx, batch, num_labels)
-                y_true, leftover, label_frac = get_partial_label_mask(y, cur_idx, per_sample_idx, batch, idx)
+                y_true, leftover, label_frac = get_partial_label_mask(y, cur_idx, per_sample_idx, batch, args, idx)
 
                 # perform gradient update
                 with tf.GradientTape() as tape:
