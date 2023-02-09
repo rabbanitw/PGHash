@@ -11,16 +11,22 @@ def get_unique_N(iterable, N):
     """Yields (in order) the first N unique elements of iterable.
     Might yield less if data too short."""
     seen = set()
-    i = 0
+    # i = 0
     for e in iterable:
-        i += 1
+        # i += 1
         if e in seen:
             continue
         seen.add(e)
         yield e
         if len(seen) == N:
-            yield i
+            # yield i
             return
+
+
+def topk_by_partition(input, k):
+    ind = np.argpartition(input, k)[:k]
+    input = input[ind]
+    return ind[np.argsort(input)]
 
 
 class PGHash(ModelHub):
@@ -88,9 +94,10 @@ class PGHash(ModelHub):
                     h_idx = np.where(base2_hash[:j] == base2_hash[j])
                     h_idx = h_idx[0][0]
                     if i == self.num_tables - 1:
-                        cur_idx[j] = cur_idx[h_idx]
-                    else:
-                        cur_idx[j][i, :] = cur_idx[h_idx][i, :]
+                        if self.num_tables == 1:
+                            cur_idx[j] = cur_idx[h_idx]
+                        else:
+                            cur_idx[j][i, :] = cur_idx[h_idx][i, :]
 
                 else:
                     # compute hamming distances
@@ -101,11 +108,15 @@ class PGHash(ModelHub):
 
                     # compute the topk closest average hamming distances to neuron
                     if i == self.num_tables - 1:
-                        if self.num_tables > 1:
-                            cur_idx[j] = np.sum(cur_idx[j], axis=0)
-                            cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
-                        else:
-                            cur_idx[j] = np.argsort(cur_idx[j].flatten())[:self.num_c_layers]
+                        if self.num_tables == 1:
+                            cif = cur_idx[j].flatten()
+                            # cur_idx[j] = topk_by_partition(cif, self.num_c_layers)
+                            cur_idx[j] = np.argsort(cif)[:self.num_c_layers]
+
+        if self.num_tables > 1:
+            for j in bs_range:
+                cur_idx[j] = np.sum(cur_idx[j], axis=0)
+                cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
 
         # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
         cur_idxs = np.vstack(cur_idx)
@@ -113,11 +124,25 @@ class PGHash(ModelHub):
 
         # get first unique K values
         k = list(get_unique_N(cur_idx_1d, self.num_c_layers))
-        total_vals = k[-1]
-        chosen_idx = np.sort(k[:-1])
+        chosen_idx = np.sort(k)
 
         for j in range(bs):
-            cur_idx[j] = np.intersect1d(chosen_idx, cur_idxs[j, :])
+            cur_idx[j] = cur_idx[j][np.in1d(cur_idx[j], chosen_idx, assume_unique=True)]
+
+        '''
+        t = time.time()
+        comb = np.hstack((cur_idxs, np.tile(chosen_idx, (bs, 1))))
+        comb.sort(axis=1)
+        comb_bool = comb[:, 1:] == comb[:, :-1]
+        indices = comb[:, :-1][comb_bool]
+        num_ind_per_sample = np.cumsum(np.sum(comb_bool, axis=1))
+        i = 0
+        for j in range(bs):
+            stop = num_ind_per_sample[j]
+            cur_idx[j] = indices[i:stop]
+            i += stop
+        print(time.time() - t)
+        '''
 
         #ceil = np.ceil(total_vals/bs).astype(int)
         #diff = ceil*bs - self.num_c_layers

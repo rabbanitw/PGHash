@@ -98,9 +98,10 @@ if __name__ == '__main__':
 
     mw_crs = [0.1, 0.1, 0.1]
     mw_workers = [1, 4, 8]
-    mw_labels = ['PGHash: 0.1CR, 1 Worker', 'PGHash: 0.1CR, 4 Workers', 'PGHash: 0.1CR, 8 Workers']
+    mw_labels = ['PGHash: 0.1CR, 1 Table', 'PGHash: 0.1CR, 1 Table', 'PGHash: 0.1CR, 1 Table']
+    mw_labelst = ['PGHash: 0.1CR, 10 Tables', 'PGHash: 0.1CR, 10 Tables', 'PGHash: 0.1CR, 10 Tables']
 
-    multi_worker_test = False
+    multi_worker_test = True
 
     # Delicious Results
 
@@ -115,23 +116,25 @@ if __name__ == '__main__':
                 file = 'pghash-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr'
 
                 test_acc_pg, iters_pg = unpack_raw_test(folder+file)
+                test_acc_pgt, iters_pgt = unpack_raw_test(folder + 'pg-table-' + file)
 
                 plt.plot(iters_pg, test_acc_pg, label=mw_labels[j], color='r')
+                plt.plot(iters_pgt, test_acc_pgt, label=mw_labelst[j], color='g')
 
                 # plot dense baseline
                 dense_file = 'dense-' + dataset + '-' + str(nw) + 'workers-' + '1.0cr'
                 baseline_filepath = folder + dense_file
                 test_acc, iters = unpack_raw_test(baseline_filepath)
                 if nw == 1:
-                    leg = 'Dense Baseline: 1 Worker'
+                    leg = 'Dense Baseline'
                 else:
-                    leg = 'FedAvg: ' + str(nw) + ' Workers'
+                    leg = 'FedAvg'
 
                 if j == 2:
                     iters = iters[:len(iters_pg)]
                     test_acc = test_acc[:len(test_acc_pg)]
                 plt.plot(iters, test_acc, label=leg, color='b')
-                plt.legend(loc='best')
+                plt.legend(loc='lower right')
                 plt.ylabel('Test Accuracy', fontsize=15)
                 plt.xlabel('Iterations', fontsize=15)
                 plt.xscale("log")
