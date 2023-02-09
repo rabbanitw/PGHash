@@ -4,22 +4,46 @@ import time
 from util.misc import compute_accuracy_lsh
 
 
+class inner_softmax_ce(tf.keras.losses.Loss):
+    # initialize instance attributes
+    def __init__(self, num_diff):
+        super(inner_softmax_ce, self).__init__()
+        self.num_diff = num_diff
+
+    # Compute loss
+    def call(self, y_true, y_pred):
+        max_logit = tf.math.maximum(tf.math.reduce_max(y_pred, axis=1, keepdims=True), 0)
+        # inner exponential sum
+        inner_exp_sum = tf.reduce_sum(tf.math.exp(y_pred - max_logit), axis=1, keepdims=True)
+        # outer exponential sum
+        outside_e_logit = tf.math.maximum(tf.math.exp(-max_logit), 1e-12)
+        outer_exp_sum = self.num_diff * outside_e_logit
+        # sum of inner and outer
+        e_sum = inner_exp_sum + outer_exp_sum
+        # log of inner and outer sum
+        log_sum_exp = tf.math.log(e_sum)
+        log_sm = y_pred - max_logit - log_sum_exp
+        # inner loss (using mask)
+        return tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True)
+
+
 def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size, args, idx):
 
     t = time.time()
     y_true = tf.sparse.to_dense(sparse_y)
-    print(time.time()-t)
+    #print(time.time()-t)
 
     # make sure all samples are divided by number of labels
     nz = tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
     y_true = y_true / nz
-    print(time.time() - t)
+    #print(time.time() - t)
 
+    # TRY TO CREATE MASK FROM INDICES WITHOUT HAVING TO USE FORLOOP (SAVE 0.025 seconds)
     mask = np.zeros((batch_size, y_true.shape[1]))
     for j in range(batch_size):
         mask[j, sample_idx[j + idx*args.train_bs]] = 1
         # mask[j, sample_idx[j + idx*args.train_bs, :]] = 1
-    print(time.time() - t)
+    #print(time.time() - t)
 
     # mask the true label
     y_true = y_true * mask
@@ -28,8 +52,7 @@ def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size, args, idx)
     y_true = tf.gather(y_true, indices=sub_idx, axis=1)
 
     leftout_labels = nz - tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
-    print(time.time() - t)
-    print('====')
+    #print(time.time() - t)
 
     return y_true, leftout_labels, 1/nz
 
@@ -49,6 +72,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
     num_labels = Method.nl
     num_features = Method.nf
     num_diff = tf.constant(num_labels - Method.num_c_layers, dtype=tf.float32)
+    lossF = inner_softmax_ce(num_diff)
 
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
@@ -75,8 +99,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             lsh_init = time.time()
             cur_idx, per_sample_idx = Method.lsh_hamming(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
-
-            print(lsh_time)
 
             if size > 1:
                 # send indices to root (server)
@@ -115,6 +137,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 # y_true = get_partial_label(y, cur_idx, batch, num_labels)
                 y_true, leftover, label_frac = get_partial_label_mask(y, cur_idx, per_sample_idx, batch, args, idx)
 
+                #t = time.time()
                 # perform gradient update
                 with tf.GradientTape() as tape:
                     y_pred = Method.model(x)
@@ -133,11 +156,14 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     # inner loss (using mask)
                     inner = tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True)
                     # outer loss
-                    outer = leftover * label_frac * tf.math.log(outside_e_logit / e_sum)
+                    # outer = leftover * label_frac * tf.math.log(outside_e_logit / e_sum)
+                    outer = leftover * label_frac * (tf.math.log(outside_e_logit) - log_sum_exp)
                     loss_value = -tf.reduce_mean(inner + outer)
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
+                #print(time.time()-t)
+                #print('====')
 
                 # compute accuracy (top 1) and loss for the minibatch
                 rec_init = time.time()
