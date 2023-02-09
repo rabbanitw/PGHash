@@ -6,27 +6,32 @@ from util.misc import compute_accuracy_lsh
 
 def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size, args, idx):
 
-    y_true = tf.sparse.to_dense(sparse_y).numpy()
+    t = time.time()
+    y_true = tf.sparse.to_dense(sparse_y)
+    print(time.time()-t)
 
     # make sure all samples are divided by number of labels
-    nz = np.count_nonzero(y_true, axis=1, keepdims=True)
+    nz = tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
     y_true = y_true / nz
+    print(time.time() - t)
 
     mask = np.zeros((batch_size, y_true.shape[1]))
     for j in range(batch_size):
         mask[j, sample_idx[j + idx*args.train_bs]] = 1
-        # mask[j, sample_idx[j + idx*batch_size, :]] = 1
+        # mask[j, sample_idx[j + idx*args.train_bs, :]] = 1
+    print(time.time() - t)
 
     # mask the true label
     y_true = y_true * mask
 
     # shorten the true label
-    y_true = y_true[:, sub_idx]
+    y_true = tf.gather(y_true, indices=sub_idx, axis=1)
 
-    leftout_labels = nz - np.count_nonzero(y_true, axis=1, keepdims=True)
+    leftout_labels = nz - tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
+    print(time.time() - t)
+    print('====')
 
-    return tf.convert_to_tensor(y_true, dtype=tf.float32), tf.convert_to_tensor(leftout_labels, dtype=tf.float32), \
-           tf.convert_to_tensor(1/nz, dtype=tf.float32)
+    return y_true, leftout_labels, 1/nz
 
 
 def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args):
@@ -70,6 +75,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             lsh_init = time.time()
             cur_idx, per_sample_idx = Method.lsh_hamming(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
+
+            print(lsh_time)
 
             if size > 1:
                 # send indices to root (server)
