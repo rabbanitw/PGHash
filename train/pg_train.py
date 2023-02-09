@@ -71,8 +71,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             cur_idx, per_sample_idx = Method.lsh_hamming(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
 
-            print(lsh_time)
-
             if size > 1:
                 # send indices to root (server)
                 Method.exchange_idx()

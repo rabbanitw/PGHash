@@ -72,54 +72,37 @@ class PGHash(ModelHub):
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
         bs_range = np.arange(bs)
-        cur_idx = [np.empty((self.num_tables, self.nl)) for _ in bs_range]
+        cur_idx = [np.empty(self.nl) for _ in range(bs)]
 
-        for i in range(self.num_tables):
-            # create gaussian matrix
-            pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
-                                                                    int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
+        # create gaussian matrix
+        pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
+                                                                int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
 
-            # Apply PGHash to weights.
-            hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
+        # Apply PGHash to weights.
+        hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
 
-            # Apply PG to input vector.
-            transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
+        # Apply PG to input vector.
+        transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
 
-            # convert  data to base 2 to remove repeats
-            base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-            for j in bs_range:
+        # convert  data to base 2 to remove repeats
+        base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
+        for j in bs_range:
 
-                if base2_hash[j] in base2_hash[:j]:
-                    # if hamming distance is already computed
-                    h_idx = np.where(base2_hash[:j] == base2_hash[j])
-                    h_idx = h_idx[0][0]
-                    if i == self.num_tables - 1:
-                        if self.num_tables == 1:
-                            cur_idx[j] = cur_idx[h_idx]
-                        else:
-                            cur_idx[j][i, :] = cur_idx[h_idx][i, :]
+            if base2_hash[j] in base2_hash[:j]:
+                # if hamming distance is already computed
+                h_idx = np.where(base2_hash[:j] == base2_hash[j])
+                h_idx = h_idx[0][0]
+                cur_idx[j] = cur_idx[h_idx]
 
-                else:
-                    # compute hamming distances
-                    hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
+            else:
+                # compute hamming distances
+                hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
+                # compute the topk closest average hamming distances to neuron
+                cur_idx[j] = topk_by_partition(hamm_dists, self.num_c_layers)
+                # cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
 
-                    # create list of average hamming distances for a single neuron
-                    cur_idx[j][i, :] = hamm_dists
-
-                    # compute the topk closest average hamming distances to neuron
-                    if i == self.num_tables - 1:
-                        if self.num_tables == 1:
-                            cif = cur_idx[j].flatten()
-                            # cur_idx[j] = topk_by_partition(cif, self.num_c_layers)
-                            cur_idx[j] = np.argsort(cif)[:self.num_c_layers]
-
-        if self.num_tables > 1:
-            for j in bs_range:
-                cur_idx[j] = np.sum(cur_idx[j], axis=0)
-                cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
-
-        # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
         cur_idxs = np.vstack(cur_idx)
+        # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
         cur_idx_1d = cur_idxs.T.flatten()
 
         # get first unique K values
@@ -128,28 +111,6 @@ class PGHash(ModelHub):
 
         for j in range(bs):
             cur_idx[j] = cur_idx[j][np.in1d(cur_idx[j], chosen_idx, assume_unique=True)]
-
-        '''
-        t = time.time()
-        comb = np.hstack((cur_idxs, np.tile(chosen_idx, (bs, 1))))
-        comb.sort(axis=1)
-        comb_bool = comb[:, 1:] == comb[:, :-1]
-        indices = comb[:, :-1][comb_bool]
-        num_ind_per_sample = np.cumsum(np.sum(comb_bool, axis=1))
-        i = 0
-        for j in range(bs):
-            stop = num_ind_per_sample[j]
-            cur_idx[j] = indices[i:stop]
-            i += stop
-        print(time.time() - t)
-        '''
-
-        #ceil = np.ceil(total_vals/bs).astype(int)
-        #diff = ceil*bs - self.num_c_layers
-        #cur_idx = cur_idx[:, :ceil]
-        # fill ragged parts with same indices as column before
-        #cur_idx[-diff:, -1] = cur_idx[-diff:, -2]
-
 
         # current method is slow because of unique and looping intersection. Finding a greedy approach
         '''
