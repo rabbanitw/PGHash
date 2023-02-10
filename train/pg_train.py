@@ -108,7 +108,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     # inner exponential sum
                     inner_exp_sum = tf.reduce_sum(tf.math.exp(y_pred - max_logit), axis=1, keepdims=True)
                     # outer exponential sum
-                    outside_e_logit = tf.math.maximum(tf.math.exp(-max_logit), 1e-12)
+                    # outside_e_logit = tf.math.maximum(tf.math.exp(-max_logit), 1e-12)
+                    outside_e_logit = tf.math.exp(-max_logit)
                     outer_exp_sum = num_diff * outside_e_logit
                     # sum of inner and outer
                     e_sum = inner_exp_sum + outer_exp_sum
