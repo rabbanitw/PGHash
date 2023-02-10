@@ -62,6 +62,13 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             cur_idx, per_sample_idx = Method.lsh_hamming(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
 
+            # testing random training
+            # cur_idx = np.sort(np.random.choice(np.arange(num_labels), size=Method.num_c_layers, replace=False))
+            # per_sample_idx = [cur_idx for _ in range(args.train_bs)]
+            # Method.ci = cur_idx
+            # update indices with new current index
+            # Method.bias_idx = Method.ci + Method.bias_start
+
             if size > 1:
                 # send indices to root (server)
                 Method.exchange_idx()
@@ -108,7 +115,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     # inner exponential sum
                     inner_exp_sum = tf.reduce_sum(tf.math.exp(y_pred - max_logit), axis=1, keepdims=True)
                     # outer exponential sum
-                    # outside_e_logit = tf.math.maximum(tf.math.exp(-max_logit), 1e-12)
                     outside_e_logit = tf.math.exp(-max_logit)
                     outer_exp_sum = num_diff * outside_e_logit
                     # sum of inner and outer
@@ -119,8 +125,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     # inner loss (using mask)
                     inner = tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True)
                     # outer loss
-                    # outer = leftover * label_frac * tf.math.log(outside_e_logit / e_sum)
-                    # outer = leftover * label_frac * (tf.math.log(outside_e_logit) - log_sum_exp)
                     outer = -leftover * label_frac * (max_logit + log_sum_exp)
                     loss_value = -tf.reduce_mean(inner + outer)
 

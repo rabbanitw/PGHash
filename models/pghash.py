@@ -55,8 +55,8 @@ class PGHash(ModelHub):
         self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
         label_idx = np.arange(self.nl)
         for (x_batch_test, y_batch_test) in test_data:
-            test_batch = x_batch_test.get_shape()[0]
             y_pred_test = self.big_model(x_batch_test, training=False)
+            test_batch = x_batch_test.get_shape()[0]
             test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
             acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
@@ -99,7 +99,7 @@ class PGHash(ModelHub):
                 hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
                 # compute the topk closest average hamming distances to neuron
                 cur_idx[j] = topk_by_partition(hamm_dists, self.num_c_layers)
-                # cur_idx[j] = np.argsort(cur_idx[j])[:self.num_c_layers]
+                # cur_idx[j] = np.argsort(hamm_dists)[:self.num_c_layers]
 
         cur_idxs = np.vstack(cur_idx)
         # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
