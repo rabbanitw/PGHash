@@ -59,7 +59,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
             # compute LSH
             lsh_init = time.time()
-            cur_idx, per_sample_idx = Method.lsh_hamming(Method.model, x_batch_train)
+            # cur_idx, per_sample_idx = Method.lsh_hamming(Method.model, x_batch_train)
+            cur_idx, per_sample_idx = Method.lsh_avg_hamming(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
 
             # testing random training

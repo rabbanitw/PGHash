@@ -4,6 +4,7 @@ from mpi4py import MPI
 from models.base import ModelHub
 from util.mlp import SparseNeuralNetwork
 from util.misc import compute_accuracy_lsh
+from lsh import pg_hashtable
 import time
 
 
@@ -60,6 +61,56 @@ class PGHash(ModelHub):
             test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
             acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
+
+    def lsh_avg_hamming(self, model, data, num_tables=2):
+
+        # get input layer for LSH
+        feature_extractor = tf.keras.Model(
+            inputs=model.inputs,
+            outputs=model.layers[2].output,  # this is the post relu
+        )
+
+        in_layer = feature_extractor(data).numpy()
+        bs = in_layer.shape[0]
+        bs_range = np.arange(bs)
+        cur_idx = [np.empty((num_tables, self.nl)) for _ in range(bs)]
+
+        for i in range(num_tables):
+            # create gaussian matrix
+            pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
+                                                                    int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
+
+            # Apply PGHash to weights.
+            hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
+
+            # Apply PG to input vector.
+            transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
+
+            # convert  data to base 2 to remove repeats
+            base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
+            for j in bs_range:
+
+                if base2_hash[j] in base2_hash[:j]:
+                    # if hamming distance is already computed
+                    h_idx = np.where(base2_hash[:j] == base2_hash[j])
+                    h_idx = h_idx[0][0]
+                    cur_idx[j][i, :] = cur_idx[h_idx][i, :]
+
+                else:
+                    # compute hamming distances
+                    cur_idx[j][i, :] = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
+
+            full = np.sum(np.vstack(cur_idx), axis=0)
+            self.ci = topk_by_partition(full, self.num_c_layers)
+
+            cur_idx = [self.ci for _ in bs_range]
+
+            # update indices with new current index
+            self.bias_idx = self.ci + self.bias_start
+
+            # return self.ci, mask
+            return self.ci, cur_idx
+
 
     def lsh_hamming(self, model, data):
 
@@ -295,57 +346,44 @@ class PGHash(ModelHub):
 
         return self.ci, [self.ci for _ in range(bs)]
 
-    def lsh_vanilla(self, model, data, num_random_table=20):
+        def lsh_vanilla(self, model, data, num_random_table=100):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
             inputs=model.inputs,
             outputs=model.layers[2].output,  # this is the post relu
-            # outputs=self.model.layers[1].output,  # this is the pre relu
         )
 
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
-        cur_idx = [i for i in range(bs)]
+        cur_idx = [np.zeros(self.nl, dtype=np.int) for _ in range(bs)]
+        global_chosen_idx = np.zeros(self.nl, dtype=np.int)
 
         for i in range(num_random_table):
             g_mat, ht_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
 
             # Apply PG to input vector.
             transformed_layer = np.heaviside(g_mat @ in_layer.T, 0)
+
             # convert to base 2
             hash_code = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
+
             for j in range(bs):
-                if i == 0:
-                    cur_idx[j] = ht_dict[hash_code[j]]
-                else:
-                    cur_idx[j] = np.union1d(cur_idx[j], ht_dict[hash_code[j]])
+                matched_weights = ht_dict[hash_code[j]]
+                cur_idx[j][matched_weights] += 1
+                global_chosen_idx[matched_weights] += 1
 
-            chosen_idx, count = np.unique(np.concatenate(cur_idx), return_counts=True)
-
-            if len(chosen_idx) > self.num_c_layers:
-                # take the top cr*num_labels neurons
-                top_idx = np.argsort(-count)[:self.num_c_layers]
-                chosen_idx = chosen_idx[top_idx]
-                for j in range(bs):
-                    cur_idx[j] = np.intersect1d(cur_idx[j], chosen_idx).astype(np.int32)
-                self.ci = np.sort(chosen_idx).astype(np.int32)
+            if np.count_nonzero(global_chosen_idx) >= self.num_c_layers:
+                chosen_idx = np.argpartition(-global_chosen_idx, self.num_c_layers)[:self.num_c_layers]
+                print(i+1)
                 break
-            if i == num_random_table-1:
-                # try random fill first
-                gap = self.num_c_layers - len(chosen_idx)
-                non_chosen = np.setdiff1d(np.arange(self.nl), chosen_idx)
-                random_fill = np.random.choice(non_chosen, size=(gap), replace=False)
-                per_batch = int(gap/bs)
 
-                for j in range(bs):
-                    #cur_idx[j] = np.union1d(cur_idx[j], random_fill).astype(np.int32)
-                    if j == bs-1:
-                        cur_idx[j] = np.union1d(cur_idx[j], random_fill[j * per_batch:]).astype(
-                            np.int32)
-                    else:
-                        cur_idx[j] = np.union1d(cur_idx[j], random_fill[j*per_batch:(j+1)*per_batch]).astype(np.int32)
-                self.ci = np.union1d(random_fill, chosen_idx).astype(np.int32)
+        for j in range(bs):
+            dev_weights = cur_idx[j]
+            dev_weights = np.where(dev_weights > 0)[0]
+            cur_idx[j] = dev_weights[np.in1d(dev_weights, chosen_idx, assume_unique=True)]
+
+        self.ci = chosen_idx
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start

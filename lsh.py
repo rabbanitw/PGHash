@@ -2,7 +2,6 @@ import numpy as np
 import tensorflow as tf
 import sklearn.metrics as sn
 from collections import defaultdict
-import time
 
 
 def pg_hashtable(weights, n, sdim):
@@ -27,18 +26,8 @@ def pg_hashtable(weights, n, sdim):
     for k, v in zip(hash_table, np.arange(len(hash_table))):
         hash_dict[k].append(v)
     # make the dictionary contain numpy arrays and not a list (for faster slicing)
-    max = np.zeros(len(hash_dict))
-    max_key = None
-    c = 0
     for key in hash_dict:
         hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
-        if len(hash_dict[key]) > np.max(max):
-            max_key = key
-        max[c] = len(hash_dict[key])
-        c += 1
-    #print(-np.sort(-max))
-    #print(max_key)
-    #print('=====')
 
     return pg_gaussian, hash_dict
 
