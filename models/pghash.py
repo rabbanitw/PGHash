@@ -62,6 +62,29 @@ class PGHash(ModelHub):
             acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
 
+
+    def lsh_vanilla(self, model, data):
+
+        # get input layer for LSH
+        feature_extractor = tf.keras.Model(
+            inputs=model.inputs,
+            outputs=model.layers[2].output,  # this is the post relu
+        )
+
+        in_layer = feature_extractor(data).numpy()
+        bs = in_layer.shape[0]
+        bs_range = np.arange(bs)
+
+        # create gaussian matrix
+        pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
+                                                                int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
+
+        # Apply PGHash to weights.
+        hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
+
+        # Apply PG to input vector.
+        transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
+
     def lsh_avg_hamming(self, model, data, num_tables=2):
 
         # get input layer for LSH

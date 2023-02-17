@@ -15,25 +15,19 @@ def get_partial_label_mask(sparse_y, sub_idx, sample_idx, batch_size, args, idx)
     # TRY TO CREATE MASK FROM INDICES WITHOUT HAVING TO USE FORLOOP (SAVE 0.025 seconds)
     num_labels = y_true.shape[1]
     mask = np.zeros((batch_size, num_labels))
-    bias_mask = np.ones((batch_size, num_labels))
+    penalty_term = np.log(1e-12) * np.ones((batch_size, num_labels))
     for j in range(batch_size):
         mask[j, sample_idx[j + idx*args.train_bs]] = 1
-        bias_mask[j, sample_idx[j + idx * args.train_bs]] = 0
-        # mask[j, sample_idx[j + idx*args.train_bs, :]] = 1
+        penalty_term[j, sample_idx[j + idx * args.train_bs]] = 0
     mask = mask[:, sub_idx]
-    bias_mask = bias_mask[:, sub_idx]
-
-    # return non-active y values
-    non_active_indices = np.setdiff1d(np.arange(num_labels), sub_idx)
-    y_na = tf.gather(y_true, indices=non_active_indices, axis=1)
+    penalty_term = penalty_term[:, sub_idx]
 
     # shorten the true label
     y_true = tf.gather(y_true, indices=sub_idx, axis=1)
 
-    # leftout_labels = nz - tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
+    leftout_labels = nz - tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
 
-    return y_true, y_na, tf.convert_to_tensor(mask, dtype=tf.dtypes.float32), bias_mask
-    # return y_true, leftout_labels, 1/nz, tf.convert_to_tensor(mask, dtype=tf.dtypes.float32), bias_mask
+    return y_true, leftout_labels, 1/nz, tf.convert_to_tensor(mask, dtype=tf.dtypes.float32), tf.convert_to_tensor(penalty_term, dtype=tf.dtypes.float32)
 
 
 def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args):
@@ -50,7 +44,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
     num_labels = Method.nl
     num_features = Method.nf
-    num_diff = tf.constant(num_labels - Method.num_c_layers, dtype=tf.float32)
 
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
@@ -73,8 +66,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             lsh_time = time.time() - lsh_init
 
             # testing random training
-            active_idx = np.sort(np.random.choice(np.arange(num_labels), size=Method.num_c_layers, replace=False))
-            # active_idx = np.arange(Method.num_c_layers)
+            # active_idx = np.sort(np.random.choice(np.arange(num_labels), size=Method.num_c_layers, replace=False))
+            active_idx = np.arange(Method.num_c_layers)
             sample_active_idx = [active_idx for _ in range(args.train_bs)]
             Method.ci = active_idx
             # update indices with new current index
@@ -113,44 +106,75 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     model, comm_time = Method.communicate(Method.model, smart=smartavg)
 
                 batch_size = x.get_shape()[0]
-                #y_true, leftover, label_frac, mask, bias_mask = get_partial_label_mask(y, active_idx, sample_active_idx, batch_size, args, idx)
-                # y_true, y_na, mask, bias_mask = get_partial_label_mask(y, active_idx, sample_active_idx, batch_size, args, idx)
 
-                # get biases for loss (since they shouldn't be fully zero'd out)
-                # full_biases = Method.full_model[Method.bias_start:]
-                # active_bias = tf.convert_to_tensor(full_biases[active_idx] * bias_mask, dtype=tf.dtypes.float32)
-                # inactive_bias = tf.convert_to_tensor(full_biases[np.setdiff1d(np.arange(num_labels), active_idx)][:, np.newaxis], dtype=tf.dtypes.float32)
-
-                full_biases = Method.full_model[Method.bias_start:]
-                mask = np.zeros((batch_size, num_labels))
-                bias_mask = np.ones((batch_size, num_labels))
+                '''
+                full_mask = np.zeros((batch_size, num_labels))
+                active_mask = np.zeros((batch_size, num_labels))
+                sub_mask = np.zeros((batch_size, num_labels))
+                eps_mask = 1e-12*np.ones((batch_size, num_labels))
                 for j in range(batch_size):
-                    mask[j, sample_active_idx[j + sub_batch_idx * args.train_bs]] = 1
-                    bias_mask[j, sample_active_idx[j + sub_batch_idx * args.train_bs]] = 0
-                mask = tf.convert_to_tensor(mask, dtype=tf.dtypes.float32)
-                bias = tf.convert_to_tensor(bias_mask*full_biases, dtype=tf.dtypes.float32)
-
-                # non_cur_idx = np.setdiff1d(np.arange(num_labels), active_idx)
-                # inactive neuron biases
-                # non_active_indices = [[x] for x in non_cur_idx]
-                # inactive_biases = tf.convert_to_tensor(full_biases[non_cur_idx], dtype=tf.dtypes.float32)
+                    sub_mask[j, sample_active_idx[j + sub_batch_idx * args.train_bs]] = 100000
+                    active_mask[j, sample_active_idx[j + sub_batch_idx * args.train_bs]] = 1
+                    full_mask[j, sample_active_idx[j + sub_batch_idx * args.train_bs]] = 1
+                    eps_mask[j, sample_active_idx[j + sub_batch_idx * args.train_bs]] = 0
+                sub_mask = tf.convert_to_tensor(sub_mask[:, active_idx], dtype=tf.dtypes.float32)
+                active_mask = tf.convert_to_tensor(active_mask[:, active_idx], dtype=tf.dtypes.float32)
+                full_mask = tf.convert_to_tensor(full_mask, dtype=tf.dtypes.float32)
+                eps_mask = tf.convert_to_tensor(eps_mask, dtype=tf.dtypes.float32)
 
                 active_indices = [[x] for x in active_idx]
                 shape = tf.constant([num_labels, batch_size])
                 y_true = tf.sparse.to_dense(y)
-
                 # make each row a valid probability distribution
                 nz = tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
                 y_true = y_true / nz
+                '''
+
+                y_true, leftover, label_frac, active_mask, penalty_term = get_partial_label_mask(y, active_idx, sample_active_idx, batch_size, args, sub_batch_idx)
 
                 # perform gradient update
                 with tf.GradientTape() as tape:
-                    y_pred = Method.model(x)
-                    y_pred_full = tf.transpose(tf.scatter_nd(tf.constant(active_indices), tf.transpose(y_pred), shape))
-                    y_pred_full = tf.math.multiply(y_pred_full, mask) + bias
-                    loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred_full))
+                    # y_pred = Method.model(x)
+                    # y_pred_full = tf.transpose(tf.scatter_nd(tf.constant(active_indices), tf.transpose(y_pred), shape))
+                    # y_pred_full = tf.math.multiply(y_pred_full, mask)
+                    # loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred_full))
 
                     '''
+                    # THIS IS EXPENSIVE CUSTOM USING NO OUTSIDE AS SUM
+                    y_pred = Method.model(x)
+                    # y_pred = tf.math.subtract(y_pred, sub_mask)
+                    # y_pred = tf.math.multiply(y_pred, active_mask)
+                    # ==== custom loss ====
+                    max_logit = tf.math.reduce_max(y_pred, axis=1, keepdims=True)
+                    pred_exp = tf.math.exp(y_pred - max_logit)
+                    # pred_exp = tf.math.multiply(pred_exp, active_mask)
+                    exp_sum = tf.reduce_sum(pred_exp, axis=1, keepdims=True)
+                    log_sm = y_pred - max_logit - tf.math.log(exp_sum)
+                    log_sm_full = tf.transpose(tf.scatter_nd(tf.constant(active_indices), tf.transpose(log_sm), shape))
+                    log_sm_full = tf.math.multiply(log_sm_full, full_mask) + eps_mask
+                    loss_value = -tf.reduce_mean(tf.reduce_sum(log_sm_full * y_true, axis=1))
+                    '''
+
+                    # '''
+                    y_pred = Method.model(x)
+                    y_pred = tf.math.multiply(y_pred, active_mask) # need to come up with better here
+                    # ==== custom loss ====
+                    max_logit = tf.math.reduce_max(y_pred, axis=1, keepdims=True)
+                    # inner exponential sum
+                    pred_exp = tf.math.exp(y_pred - max_logit)
+                    pred_exp = tf.math.multiply(pred_exp, active_mask)
+                    exp_sum = tf.reduce_sum(pred_exp, axis=1, keepdims=True)
+                    log_sm = y_pred - max_logit - tf.math.log(exp_sum)
+                    # inner loss (using mask)
+                    log_sm = tf.math.multiply(log_sm, active_mask) + penalty_term
+                    inner = tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True)
+                    # outer loss
+                    outer = leftover * label_frac * tf.math.log(1e-12)
+                    loss_value = -tf.reduce_mean(inner + outer)
+                    # '''
+
+                    '''
+                    # THIS IS CUSTOM USING OUTSIDE AS PART OF SUM
                     y_pred = Method.model(x)
                     y_pred = tf.math.multiply(y_pred, mask) + active_bias
                     # ==== custom loss ====
