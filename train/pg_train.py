@@ -61,17 +61,17 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
             # compute LSH
             lsh_init = time.time()
-            # active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
+            active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
             # active_idx, sample_active_idx = Method.lsh_avg_hamming(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
 
             # testing random training
             # active_idx = np.sort(np.random.choice(np.arange(num_labels), size=Method.num_c_layers, replace=False))
-            active_idx = np.arange(Method.num_c_layers)
-            sample_active_idx = [active_idx for _ in range(args.train_bs)]
-            Method.ci = active_idx
+            # active_idx = np.arange(Method.num_c_layers)
+            # sample_active_idx = [active_idx for _ in range(args.train_bs)]
+            # Method.ci = active_idx
             # update indices with new current index
-            Method.bias_idx = Method.ci + Method.bias_start
+            # Method.bias_idx = Method.ci + Method.bias_start
 
             if size > 1:
                 # send indices to root (server)
