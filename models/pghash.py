@@ -141,8 +141,6 @@ class PGHash(ModelHub):
         pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
                                                                 int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
 
-        #pg_gaussian = np.random.normal(size=(self.sdim, self.hls))
-
         # Apply PGHash to weights.
         hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
 
@@ -171,17 +169,17 @@ class PGHash(ModelHub):
         # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
         cur_idx_1d = cur_idxs.T.flatten()
 
-        # slow but proper method
-        #'''
+        # very slow but proper method
+        '''
         # get first unique K values
         k = list(get_unique_N(cur_idx_1d, self.num_c_layers))
         chosen_idx = np.sort(k)
         for j in range(bs):
             cur_idx[j] = cur_idx[j][np.in1d(cur_idx[j], chosen_idx, assume_unique=True)]
-        #'''
-
-        # greedy method (just take the top)
         '''
+
+        # greedy method (just take the top), not as effective but much faster
+        #'''
         # get first unique K values
         k = list(get_unique_N2(cur_idx_1d, self.num_c_layers))
         chosen_idx = np.sort(k[:-1])
@@ -191,7 +189,7 @@ class PGHash(ModelHub):
                 cur_idx[j] = cur_idxs[j, :chosen_cols]
             else:
                 cur_idx[j] = cur_idxs[j, :chosen_cols+1]
-        '''
+        #'''
 
         # IDEA: Precompute hamming distances between base 2 values (maybe there is a quick way to do so)
         # once done, can easily pick the top distances from there and fill accordingly without sorting

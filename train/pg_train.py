@@ -190,7 +190,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     '''
 
                     #'''
-                    # This is custom using only ACTIVE neurons as part of sum. This was validated on full. Bad results
+                    # This is custom using only ACTIVE neurons as part of sum. Good results so far
                     y_pred = Method.model(x)
                     # y_pred = tf.math.multiply(y_pred, active_mask) # need to come up with better here
                     y_pred = tf.math.add(y_pred, active_mask2)
