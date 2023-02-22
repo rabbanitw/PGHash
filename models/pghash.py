@@ -45,12 +45,10 @@ def topk_by_partition(input, k):
 
 class PGHash(ModelHub):
 
-    def __init__(self, num_labels, num_features, rank, size, ham_dict, influence, args):
+    def __init__(self, num_labels, num_features, rank, size, influence, args):
 
         super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.num_tables, args.cr, rank,
                          size, args.q, influence)
-
-        self.ham_dict = ham_dict
 
         # initialize full model for the root device for testing accuracy
         if self.rank == 0:
@@ -104,8 +102,6 @@ class PGHash(ModelHub):
             # convert  data to base 2 to remove repeats
             base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
 
-            # convert weights to base 2
-            hash_table = hash_table.T.dot(1 << np.arange(hash_table.T.shape[-1]))
             for j in bs_range:
                 hc = base2_hash[j]
                 if hc in base2_hash[:j]:
@@ -115,8 +111,7 @@ class PGHash(ModelHub):
                     cur_idx[j][i, :] = cur_idx[h_idx][i, :]
                 else:
                     # compute hamming distances
-                    # cur_idx[j][i, :] = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
-                    cur_idx[j][i, :] = [self.ham_dict[hc][hash_code] for hash_code in hash_table]
+                    cur_idx[j][i, :] = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
 
             full = np.sum(np.vstack(cur_idx), axis=0)
             self.ci = topk_by_partition(full, self.num_c_layers)
@@ -168,7 +163,6 @@ class PGHash(ModelHub):
             else:
                 # compute hamming distances
                 hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
-                # hamm_dists = [self.ham_dict[hc][hash_code] for hash_code in hash_table]
                 # compute the topk closest average hamming distances to neuron
                 # cur_idx[j] = topk_by_partition(hamm_dists, self.num_c_layers)
                 cur_idx[j] = np.argsort(hamm_dists)[:self.num_c_layers]

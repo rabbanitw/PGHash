@@ -2,7 +2,7 @@ import tensorflow as tf
 import argparse
 from util.dataloader import load_extreme_data
 from mpi4py import MPI
-from util.misc import AverageMeter, Recorder, get_ham_dist_dict
+from util.misc import AverageMeter, Recorder
 from models.pghash import PGHash
 from models.slide import SLIDE
 from models.dense import Dense
@@ -94,10 +94,7 @@ if __name__ == '__main__':
         optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
         print('Initializing model...')
         if method == 'PGHash':
-            # ham_dict = get_ham_dist_dict(sdim)
-            ham_dict = None
-            Method = PGHash(n_labels, n_features, rank, size, ham_dict, 1 / size, args)
-            # Method = PGHash(n_labels, n_features, rank, size, 1 / size, args)
+            Method = PGHash(n_labels, n_features, rank, size, 1 / size, args)
             # begin training once all devices are ready
             MPI.COMM_WORLD.Barrier()
             pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
