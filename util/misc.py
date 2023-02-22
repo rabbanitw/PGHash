@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import shutil
+from itertools import product
 
 
 def compute_accuracy_lsh(y_pred, y_true, lsh_idx, num_l, topk=1):
@@ -28,6 +29,21 @@ def find_topk(input, k, axis=1, ascending=False):
     ind_part = np.argsort(input, axis=axis)
     ind = np.take_along_axis(ind, ind_part, axis=axis)
     return ind
+
+
+def get_ham_dist_dict(k):
+    x = [i for i in product(range(2), repeat=k)]
+    x = np.array(x).T
+    base2_hash = x.T.dot(1 << np.arange(x.T.shape[-1]))
+    outer_dict = {}
+    for hash_num in range(x.shape[1]):
+        hash = x[:, hash_num, np.newaxis]
+        hamm_dists = np.count_nonzero(x != hash, axis=0).astype(np.int)
+        inner_dict = {}
+        for i in range(len(hamm_dists)):
+            inner_dict[base2_hash[i]] = hamm_dists[i]
+        outer_dict[base2_hash[hash_num]] = inner_dict
+    return outer_dict
 
 
 class AverageMeter(object):

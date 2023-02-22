@@ -27,7 +27,8 @@ def load_extreme_data(rank, size, train_bs, test_bs, train_data_path, test_data_
     tst_labels = convert_sparse_matrix_to_sparse_tensor(worker_labels_t)
 
     # Create train and test datasets
-    trn_dataset = tf.data.Dataset.from_tensor_slices((trn, trn_labels)).batch(train_bs)
+    trn_dataset = tf.data.Dataset.from_tensor_slices((trn, trn_labels)).shuffle(trn.get_shape()[0]).batch(train_bs)
+    # trn_dataset = tf.data.Dataset.from_tensor_slices((trn, trn_labels)).batch(train_bs)
     tst_dataset = tf.data.Dataset.from_tensor_slices((tst, tst_labels)).batch(test_bs)
     return trn_dataset, tst_dataset, num_features, num_labels
 

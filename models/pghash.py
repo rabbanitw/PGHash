@@ -12,15 +12,28 @@ def get_unique_N(iterable, N):
     """Yields (in order) the first N unique elements of iterable.
     Might yield less if data too short."""
     seen = set()
-    # i = 0
     for e in iterable:
-        # i += 1
         if e in seen:
             continue
         seen.add(e)
         yield e
         if len(seen) == N:
-            # yield i
+            return
+
+
+def get_unique_N2(iterable, N):
+    """Yields (in order) the first N unique elements of iterable.
+    Might yield less if data too short."""
+    seen = set()
+    i = 0
+    for e in iterable:
+        i += 1
+        if e in seen:
+            continue
+        seen.add(e)
+        yield e
+        if len(seen) == N:
+            yield i
             return
 
 
@@ -32,10 +45,12 @@ def topk_by_partition(input, k):
 
 class PGHash(ModelHub):
 
-    def __init__(self, num_labels, num_features, rank, size, influence, args):
+    def __init__(self, num_labels, num_features, rank, size, ham_dict, influence, args):
 
         super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.num_tables, args.cr, rank,
                          size, args.q, influence)
+
+        self.ham_dict = ham_dict
 
         # initialize full model for the root device for testing accuracy
         if self.rank == 0:
@@ -62,29 +77,6 @@ class PGHash(ModelHub):
             acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
 
-
-    def lsh_vanilla(self, model, data):
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=model.inputs,
-            outputs=model.layers[2].output,  # this is the post relu
-        )
-
-        in_layer = feature_extractor(data).numpy()
-        bs = in_layer.shape[0]
-        bs_range = np.arange(bs)
-
-        # create gaussian matrix
-        pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
-                                                                int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
-
-        # Apply PGHash to weights.
-        hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
-
-        # Apply PG to input vector.
-        transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
-
     def lsh_avg_hamming(self, model, data, num_tables=2):
 
         # get input layer for LSH
@@ -103,7 +95,7 @@ class PGHash(ModelHub):
             pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
                                                                     int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
 
-            # Apply PGHash to weights.
+            # Apply PGHash to weights. CHECK THE self.final_dense
             hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
 
             # Apply PG to input vector.
@@ -111,17 +103,20 @@ class PGHash(ModelHub):
 
             # convert  data to base 2 to remove repeats
             base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-            for j in bs_range:
 
-                if base2_hash[j] in base2_hash[:j]:
+            # convert weights to base 2
+            hash_table = hash_table.T.dot(1 << np.arange(hash_table.T.shape[-1]))
+            for j in bs_range:
+                hc = base2_hash[j]
+                if hc in base2_hash[:j]:
                     # if hamming distance is already computed
                     h_idx = np.where(base2_hash[:j] == base2_hash[j])
                     h_idx = h_idx[0][0]
                     cur_idx[j][i, :] = cur_idx[h_idx][i, :]
-
                 else:
                     # compute hamming distances
-                    cur_idx[j][i, :] = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
+                    # cur_idx[j][i, :] = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
+                    cur_idx[j][i, :] = [self.ham_dict[hc][hash_code] for hash_code in hash_table]
 
             full = np.sum(np.vstack(cur_idx), axis=0)
             self.ci = topk_by_partition(full, self.num_c_layers)
@@ -133,7 +128,6 @@ class PGHash(ModelHub):
 
             # return self.ci, mask
             return self.ci, cur_idx
-
 
     def lsh_hamming(self, model, data):
 
@@ -152,48 +146,62 @@ class PGHash(ModelHub):
         pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
                                                                 int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
 
+        #pg_gaussian = np.random.normal(size=(self.sdim, self.hls))
+
         # Apply PGHash to weights.
         hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
 
         # Apply PG to input vector.
         transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
 
-        # convert  data to base 2 to remove repeats
+        # convert data to base 2 to remove repeats
         base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-        for j in bs_range:
 
-            if base2_hash[j] in base2_hash[:j]:
+        for j in bs_range:
+            hc = base2_hash[j]
+            if hc in base2_hash[:j]:
                 # if hamming distance is already computed
-                h_idx = np.where(base2_hash[:j] == base2_hash[j])
+                h_idx = np.where(base2_hash[:j] == hc)
                 h_idx = h_idx[0][0]
                 cur_idx[j] = cur_idx[h_idx]
 
             else:
                 # compute hamming distances
                 hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
+                # hamm_dists = [self.ham_dict[hc][hash_code] for hash_code in hash_table]
                 # compute the topk closest average hamming distances to neuron
-                cur_idx[j] = topk_by_partition(hamm_dists, self.num_c_layers)
-                # cur_idx[j] = np.argsort(hamm_dists)[:self.num_c_layers]
+                # cur_idx[j] = topk_by_partition(hamm_dists, self.num_c_layers)
+                cur_idx[j] = np.argsort(hamm_dists)[:self.num_c_layers]
 
         cur_idxs = np.vstack(cur_idx)
         # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
         cur_idx_1d = cur_idxs.T.flatten()
 
+        # slow but proper method
+        #'''
         # get first unique K values
         k = list(get_unique_N(cur_idx_1d, self.num_c_layers))
         chosen_idx = np.sort(k)
-
         for j in range(bs):
             cur_idx[j] = cur_idx[j][np.in1d(cur_idx[j], chosen_idx, assume_unique=True)]
+        #'''
 
-        # current method is slow because of unique and looping intersection. Finding a greedy approach
+        # greedy method (just take the top)
         '''
-        chosen_idx = np.unique(np.concatenate(cur_idx))
-        if len(chosen_idx) > self.num_c_layers:
-            chosen_idx = np.sort(np.random.choice(chosen_idx, self.num_c_layers, replace=False))
+        # get first unique K values
+        k = list(get_unique_N2(cur_idx_1d, self.num_c_layers))
+        chosen_idx = np.sort(k[:-1])
+        chosen_cols, remainder = divmod(k[-1], bs)
         for j in range(bs):
-            cur_idx[j] = np.intersect1d(chosen_idx, cur_idx[j])
+            if j > remainder:
+                cur_idx[j] = cur_idxs[j, :chosen_cols]
+            else:
+                cur_idx[j] = cur_idxs[j, :chosen_cols+1]
         '''
+
+        # IDEA: Precompute hamming distances between base 2 values (maybe there is a quick way to do so)
+        # once done, can easily pick the top distances from there and fill accordingly without sorting
+        # create a dictionary again holding the top
 
         self.ci = chosen_idx
 
