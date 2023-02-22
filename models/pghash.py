@@ -4,7 +4,6 @@ from mpi4py import MPI
 from models.base import ModelHub
 from util.mlp import SparseNeuralNetwork
 from util.misc import compute_accuracy_lsh
-from lsh import pg_hashtable
 import time
 
 
@@ -124,7 +123,7 @@ class PGHash(ModelHub):
             # return self.ci, mask
             return self.ci, cur_idx
 
-    def lsh_hamming(self, model, data):
+    def lsh_hamming(self, model, data, greedy=True):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -162,45 +161,38 @@ class PGHash(ModelHub):
                 # compute hamming distances
                 hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
                 # compute the topk closest average hamming distances to neuron
-                # cur_idx[j] = topk_by_partition(hamm_dists, self.num_c_layers)
                 cur_idx[j] = np.argsort(hamm_dists)[:self.num_c_layers]
+                # cur_idx[j] = topk_by_partition(hamm_dists, self.num_c_layers)
 
         cur_idxs = np.vstack(cur_idx)
         # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
         cur_idx_1d = cur_idxs.T.flatten()
 
-        # very slow but proper method
-        '''
-        # get first unique K values
-        k = list(get_unique_N(cur_idx_1d, self.num_c_layers))
-        chosen_idx = np.sort(k)
-        for j in range(bs):
-            cur_idx[j] = cur_idx[j][np.in1d(cur_idx[j], chosen_idx, assume_unique=True)]
-        '''
-
         # greedy method (just take the top), not as effective but much faster
-        #'''
-        # get first unique K values
-        k = list(get_unique_N2(cur_idx_1d, self.num_c_layers))
-        chosen_idx = np.sort(k[:-1])
-        chosen_cols, remainder = divmod(k[-1], bs)
-        for j in range(bs):
-            if j > remainder:
-                cur_idx[j] = cur_idxs[j, :chosen_cols]
-            else:
-                cur_idx[j] = cur_idxs[j, :chosen_cols+1]
-        #'''
+        if greedy:
+            # get first unique K values
+            k = list(get_unique_N2(cur_idx_1d, self.num_c_layers))
+            chosen_idx = np.sort(k[:-1])
+            chosen_cols, remainder = divmod(k[-1], bs)
+            for j in range(bs):
+                if j > remainder:
+                    cur_idx[j] = cur_idxs[j, :chosen_cols]
+                else:
+                    cur_idx[j] = cur_idxs[j, :chosen_cols + 1]
 
-        # IDEA: Precompute hamming distances between base 2 values (maybe there is a quick way to do so)
-        # once done, can easily pick the top distances from there and fill accordingly without sorting
-        # create a dictionary again holding the top
+        # proper method: get topK and then intersect to ensure all chosen are selected per sample
+        else:
+            # get first unique K values
+            k = list(get_unique_N(cur_idx_1d, self.num_c_layers))
+            chosen_idx = np.sort(k)
+            for j in range(bs):
+                cur_idx[j] = cur_idx[j][np.in1d(cur_idx[j], chosen_idx, assume_unique=True)]
 
         self.ci = chosen_idx
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
 
-        # return self.ci, mask
         return self.ci, cur_idx
 
     def exchange_idx(self):
@@ -333,155 +325,3 @@ class PGHash(ModelHub):
                 # decrease iteration by one in order to run another one update and average step (I2 communication)
                 self.iter -= 1
         return model, comm_time
-
-
-'''
-    def lsh_initial(self, model, data):
-
-        # get weights
-        self.get_final_dense()
-        n = self.final_dense.shape[0]
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=model.inputs,
-            # outputs=model.layers[2].output,  # this is the post relu
-            outputs=model.layers[1].output,  # this is the pre relu
-        )
-        in_layer = feature_extractor(data).numpy()
-
-        bs = in_layer.shape[0]
-        ham_dists = np.zeros(self.nl)
-
-        # run LSH to find the most important weights over the entire next Q batches
-        for _ in range(self.num_tables):
-            g_mat, ht_dict = pg_hashtable(self.final_dense, n, self.sdim)
-            ham_dists += pg(in_layer, g_mat, ht_dict, ham_dists)
-
-        # pick just the largest differences
-        avg_ham_dists = -ham_dists / (bs * self.num_tables)
-
-        # union the indices of each batch
-        self.ci = np.sort(tf.math.top_k(avg_ham_dists, self.num_c_layers).indices.numpy())
-
-        # update indices with new current index
-        self.bias_idx = self.ci + self.bias_start
-
-        return self.ci, [self.ci for _ in range(bs)]
-
-        def lsh_vanilla(self, model, data, num_random_table=100):
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=model.inputs,
-            outputs=model.layers[2].output,  # this is the post relu
-        )
-
-        in_layer = feature_extractor(data).numpy()
-        bs = in_layer.shape[0]
-        cur_idx = [np.zeros(self.nl, dtype=np.int) for _ in range(bs)]
-        global_chosen_idx = np.zeros(self.nl, dtype=np.int)
-
-        for i in range(num_random_table):
-            g_mat, ht_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
-
-            # Apply PG to input vector.
-            transformed_layer = np.heaviside(g_mat @ in_layer.T, 0)
-
-            # convert to base 2
-            hash_code = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-
-            for j in range(bs):
-                matched_weights = ht_dict[hash_code[j]]
-                cur_idx[j][matched_weights] += 1
-                global_chosen_idx[matched_weights] += 1
-
-            if np.count_nonzero(global_chosen_idx) >= self.num_c_layers:
-                chosen_idx = np.argpartition(-global_chosen_idx, self.num_c_layers)[:self.num_c_layers]
-                print(i+1)
-                break
-
-        for j in range(bs):
-            dev_weights = cur_idx[j]
-            dev_weights = np.where(dev_weights > 0)[0]
-            cur_idx[j] = dev_weights[np.in1d(dev_weights, chosen_idx, assume_unique=True)]
-
-        self.ci = chosen_idx
-
-        # update indices with new current index
-        self.bias_idx = self.ci + self.bias_start
-
-        return self.ci, cur_idx
-
-    def lsh_tables(self):
-
-        # get weights
-        self.get_final_dense()
-        n = self.final_dense.shape[0]
-
-        gaussian_mats = None
-        self.hash_dicts = []
-
-        # determine all the hash tables and gaussian matrices
-        for i in range(self.num_tables):
-            g_mat, ht_dict = slide_hashtable(self.final_dense, n, self.sdim)
-            # g_mat, ht_dict = pg_hashtable(self.final_dense, n, self.sdim)
-
-            if i == 0:
-                gaussian_mats = g_mat
-            else:
-                gaussian_mats = np.vstack((gaussian_mats, g_mat))
-
-            self.hash_dicts.append(ht_dict)
-
-        self.gaussian_mats = gaussian_mats
-
-    def lsh(self, model, data, num_random_table=50):
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=model.inputs,
-            outputs=model.layers[2].output,  # this is the post relu
-            # outputs=self.model.layers[1].output,  # this is the pre relu
-        )
-
-        in_layer = feature_extractor(data).numpy()
-        bs = in_layer.shape[0]
-        cur_idx = [i for i in range(bs)]
-
-        table_idx = np.random.choice(self.num_tables, num_random_table, replace=False)
-        for i in range(num_random_table):
-            idx = table_idx[i]
-            cur_gauss = self.gaussian_mats[(idx * self.sdim):((idx + 1) * self.sdim), :]
-            cur_ht_dict = self.hash_dicts[idx]
-            hash_idxs = slide(in_layer, cur_gauss, cur_ht_dict)
-            for j in range(bs):
-                if i == 0:
-                    cur_idx[j] = hash_idxs[j]
-                else:
-                    cur_idx[j] = np.union1d(cur_idx[j], hash_idxs[j])
-
-        chosen_idx = np.unique(np.concatenate(cur_idx))
-        if len(chosen_idx) > self.num_c_layers:
-            chosen_idx = np.sort(np.random.choice(chosen_idx, self.num_c_layers, replace=False))
-            for j in range(bs):
-                cur_idx[j] = np.intersect1d(chosen_idx, cur_idx[j]).astype(np.int32)
-        elif len(chosen_idx) < self.num_c_layers:
-            gap = self.num_c_layers - len(chosen_idx)
-            per_batch = int(gap / bs)
-            non_chosen = np.setdiff1d(np.arange(self.nl), chosen_idx)
-            random_fill = np.random.choice(non_chosen, gap, replace=False)
-            chosen_idx = np.union1d(chosen_idx, random_fill)
-            for j in range(bs):
-                if j == bs - 1:
-                    cur_idx[j] = np.union1d(cur_idx[j], random_fill[j * per_batch:]).astype(np.int32)
-                else:
-                    cur_idx[j] = np.union1d(cur_idx[j], random_fill[j * per_batch:(j + 1) * per_batch]).astype(np.int32)
-
-        self.ci = chosen_idx.astype(np.int32)
-
-        # update indices with new current index
-        self.bias_idx = self.ci + self.bias_start
-
-        return self.ci, cur_idx
-'''
