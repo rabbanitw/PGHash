@@ -1,33 +1,16 @@
 import tensorflow as tf
 import argparse
-from dataloader import load_extreme_data
+from util.dataloader import load_extreme_data
 from mpi4py import MPI
-from misc import AverageMeter, Recorder
-from pg_hash import PGHash, SLIDE
-from pg_train import pg_train, slide_train, regular_train
+from util.misc import AverageMeter, Recorder
+from models.pghash import PGHash
+from models.slide import SLIDE
+from models.dense import Dense
+from train.pg_train import pg_train
+from train.regular_train import regular_train
+from train.slide_train import slide_train
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-
-
-def train(rank, size, PGHash, optimizer, train_data, test_data, num_labels, num_features, args, method):
-
-    # initialize meters
-    top1 = AverageMeter()
-    test_top1 = AverageMeter()
-    losses = AverageMeter()
-    recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
-
-    # begin training once all devices are ready
-    MPI.COMM_WORLD.Barrier()
-
-    # begin training
-    if method == 'PGHash':
-        pg_train(rank, size, PGHash, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels,
-             num_features)
-    elif method == 'Regular':
-        regular_train(rank, size, PGHash, optimizer, train_data, test_data, losses, top1, recorder, args, num_labels)
-    elif method == 'SLIDE':
-        slide_train(rank, PGHash, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args, num_labels)
 
 
 if __name__ == '__main__':
@@ -40,7 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('--hash_type', type=str, default='pghash')
     parser.add_argument('--randomSeed', type=int, default=1203)
     parser.add_argument('--sdim', type=int, default=9)
-    parser.add_argument('--num_tables', type=int, default=50)
+    parser.add_argument('--num_tables', type=int, default=1)
     parser.add_argument('--lr', type=int, default=1e-4)
     parser.add_argument('--cr', type=float, default=0.1)
     parser.add_argument('--train_bs', type=int, default=128)
@@ -79,8 +62,8 @@ if __name__ == '__main__':
     test_bs = args.test_bs
     epochs = args.epochs
     hls = args.hidden_layer_size
-    train_data_path = 'Data/' + args.dataset + '/train.txt'
-    test_data_path = 'Data/' + args.dataset + '/test.txt'
+    train_data_path = 'data/' + args.dataset + '/train.txt'
+    test_data_path = 'data/' + args.dataset + '/test.txt'
 
     if args.hash_type[:2] == 'pg':
         batch_size = train_bs * args.q
@@ -94,7 +77,6 @@ if __name__ == '__main__':
         batch_size = train_bs
         method = 'SLIDE'
         cr = 1
-        # cr = args.cr
 
     with tf.device('/CPU:0'):
         # load (large) dataset
@@ -102,25 +84,33 @@ if __name__ == '__main__':
         train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size, test_bs,
                                                                         train_data_path, test_data_path)
 
+        # initialize meters
+        top1 = AverageMeter()
+        test_top1 = AverageMeter()
+        losses = AverageMeter()
+        recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
+
         # initialize model
+        optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
         print('Initializing model...')
         if method == 'PGHash':
-            Method = PGHash(n_labels, n_features, hls, sdim, num_tables, cr, hash_type, rank, size, args.q, 1 / size, 0,
-                            1)
+            Method = PGHash(n_labels, n_features, rank, size, 1 / size, args)
+            # begin training once all devices are ready
+            MPI.COMM_WORLD.Barrier()
+            pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
+
         elif method == 'SLIDE':
-            Method = SLIDE(n_labels, n_features, hls, sdim, num_tables, cr, hash_type, rank, size, args.q, 1 / size, 0,
-                           1)
+            Method = SLIDE(n_labels, n_features, rank, size, 1 / size, args)
+            # begin training once all devices are ready
+            MPI.COMM_WORLD.Barrier()
+            slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
+
         elif method == 'Regular':
-            Method = PGHash(n_labels, n_features, hls, sdim, num_tables, cr, hash_type, rank, size, args.q, 1 / size, 0,
-                            1)
+            Method = Dense(n_labels, n_features, hls, sdim, num_tables, cr, rank, size, args.q, 1 / size)
+            # begin training once all devices are ready
+            MPI.COMM_WORLD.Barrier()
+            regular_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, recorder, args)
+
         else:
-            Method = None
             print('ERROR: No Method Selected')
-
-        optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-        layer_shapes, layer_sizes = Method.get_model_architecture()
-
-        MPI.COMM_WORLD.Barrier()
-        # begin training
-        print('Beginning training...')
-        train(rank, size, Method, optimizer, train_data, test_data, n_labels, n_features, args, method)
+            exit()

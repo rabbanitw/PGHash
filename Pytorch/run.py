@@ -86,8 +86,8 @@ if __name__ == '__main__':
     batch_size = args.batch_size
     epochs = args.epochs
     hls = args.hidden_layer_size
-    train_data_path = '../Data/' + args.dataset + '/train.txt'
-    test_data_path = '../Data/' + args.dataset + '/test.txt'
+    train_data_path = '../data/' + args.dataset + '/train.txt'
+    test_data_path = '../data/' + args.dataset + '/test.txt'
 
     print('Loading and partitioning data...')
     # train_data, tf_data, n_features, n_labels = load_extreme_data(rank, size, batch_size, train_data_path, test_data_path)

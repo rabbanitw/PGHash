@@ -2,7 +2,6 @@ import numpy as np
 import tensorflow as tf
 import sklearn.metrics as sn
 from collections import defaultdict
-import time
 
 
 def pg_hashtable(weights, n, sdim):
@@ -19,7 +18,6 @@ def pg_hashtable(weights, n, sdim):
 
     # Apply PGHash to weights.
     hash_table = np.heaviside(pg_gaussian@weights, 0)
-
     # convert to base 2
     hash_table = hash_table.T.dot(1 << np.arange(hash_table.T.shape[-1]))
 
