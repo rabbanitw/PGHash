@@ -155,12 +155,13 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 y_true = y_true / nz
                 '''
 
-                full_mask = np.zeros((batch_size, num_labels))
-                for j in range(batch_size):
-                    full_mask[j, sample_active_idx[j + sub_batch_idx * args.train_bs]] = 1
-                mask = tf.convert_to_tensor(full_mask[:, active_idx], dtype=tf.dtypes.float32)
+                #full_mask = np.zeros((batch_size, num_labels))
+                #for j in range(batch_size):
+                #    full_mask[j, sample_active_idx[j + sub_batch_idx * args.train_bs]] = 1
+                #mask = tf.convert_to_tensor(full_mask[:, active_idx], dtype=tf.dtypes.float32)
 
                 y_true, leftover, label_frac, active_mask = get_partial_label_mask(y, active_idx, sample_active_idx, batch_size, args, sub_batch_idx)
+                active_mask2 = tf.where(active_mask == 1, 0., tf.float32.min / 10)
 
                 # perform gradient update
                 with tf.GradientTape() as tape:
@@ -188,13 +189,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     loss_value = -tf.reduce_mean(tf.reduce_sum(tf.math.multiply(y_pred_full2, mask) * y_true, axis=1))
                     '''
 
-                    # This uses outside as sum, works when we use fixed neurons for cr=0.99
-                    #y_pred = Method.model(x)
-                    #y_pred_full = tf.transpose(tf.scatter_nd(tf.constant(active_indices), tf.transpose(y_pred), shape))
-                    #y_pred_full = tf.math.multiply(y_pred_full, full_mask)
-                    #loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred_full))
-
-                    '''
+                    #'''
                     # This is custom using only ACTIVE neurons as part of sum. This was validated on full. Bad results
                     y_pred = Method.model(x)
                     # y_pred = tf.math.multiply(y_pred, active_mask) # need to come up with better here
@@ -212,9 +207,9 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     # outer loss
                     outer = leftover * label_frac * tf.math.log(1e-12)
                     loss_value = -tf.reduce_mean(inner + outer)
-                    '''
-
                     #'''
+
+                    '''
                     # THIS IS CUSTOM USING OUTSIDE AS PART OF SUM
                     y_pred = Method.model(x)
                     y_pred = tf.math.multiply(y_pred, mask) # + active_bias
@@ -235,7 +230,13 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     # outer loss
                     outer = -leftover * label_frac * (max_logit + log_sum_exp)
                     loss_value = -tf.reduce_mean(inner + outer)
-                    #'''
+                    '''
+
+                    # This uses outside as sum, works when we use fixed neurons for cr=0.99
+                    # y_pred = Method.model(x)
+                    # y_pred_full = tf.transpose(tf.scatter_nd(tf.constant(active_indices), tf.transpose(y_pred), shape))
+                    # y_pred_full = tf.math.multiply(y_pred_full, full_mask)
+                    # loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred_full))
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
