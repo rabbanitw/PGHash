@@ -123,7 +123,7 @@ class PGHash(ModelHub):
             # return self.ci, mask
             return self.ci, cur_idx
 
-    def lsh_hamming(self, model, data, greedy=True):
+    def lsh_hamming(self, model, data, greedy=False):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(

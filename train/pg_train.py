@@ -94,28 +94,19 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 # shorten the true label
                 y_true = tf.gather(y_true, indices=active_idx, axis=1)
 
-                # compute how many labels are outside of active neurons
-                leftover = nz - tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
-                label_frac = 1/nz
-
                 # perform gradient update
                 with tf.GradientTape() as tape:
-
                     # This is custom using only ACTIVE neurons as part of sum ==== custom loss ====
                     y_pred = Method.model(x)
                     y_pred = tf.math.add(y_pred, softmax_mask)
                     max_logit = tf.math.reduce_max(y_pred, axis=1, keepdims=True)
                     # inner exponential sum
                     pred_exp = tf.math.exp(y_pred - max_logit)
-                    # pred_exp = tf.math.multiply(pred_exp, active_mask)
                     exp_sum = tf.reduce_sum(pred_exp, axis=1, keepdims=True)
                     log_sm = y_pred - max_logit - tf.math.log(exp_sum)
-                    # inner loss (using mask)
+                    # zero out non-active neurons for each sample
                     log_sm = tf.math.multiply(log_sm, active_mask)
-                    inner = tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True)
-                    # outer loss
-                    outer = leftover * label_frac * tf.math.log(1e-12)
-                    loss_value = -tf.reduce_mean(inner + outer)
+                    loss_value = -tf.reduce_mean(tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True))
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
