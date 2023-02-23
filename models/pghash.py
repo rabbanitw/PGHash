@@ -168,8 +168,14 @@ class PGHash(ModelHub):
         # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
         cur_idx_1d = cur_idxs.T.flatten()
 
+        # get first unique K values
+        k = list(get_unique_N(cur_idx_1d, self.num_c_layers))
+        self.ci = np.sort(k)
         # greedy method (just take the top), not as effective but much faster
         if greedy:
+            cur_idx = [self.ci for _ in bs_range]
+
+            '''
             # get first unique K values
             k = list(get_unique_N2(cur_idx_1d, self.num_c_layers))
             chosen_idx = np.sort(k[:-1])
@@ -179,16 +185,12 @@ class PGHash(ModelHub):
                     cur_idx[j] = cur_idxs[j, :chosen_cols]
                 else:
                     cur_idx[j] = cur_idxs[j, :chosen_cols + 1]
+            '''
 
         # proper method: get topK and then intersect to ensure all chosen are selected per sample
         else:
-            # get first unique K values
-            k = list(get_unique_N(cur_idx_1d, self.num_c_layers))
-            chosen_idx = np.sort(k)
             for j in range(bs):
-                cur_idx[j] = cur_idx[j][np.in1d(cur_idx[j], chosen_idx, assume_unique=True)]
-
-        self.ci = chosen_idx
+                cur_idx[j] = cur_idx[j][np.in1d(cur_idx[j], self.ci, assume_unique=True)]
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start

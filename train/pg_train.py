@@ -96,14 +96,10 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # perform gradient update
                 with tf.GradientTape() as tape:
-                    # This is custom using only ACTIVE neurons as part of sum ==== custom loss ====
+                    # This is custom using only ACTIVE neurons as part of sum
                     y_pred = Method.model(x)
                     y_pred = tf.math.add(y_pred, softmax_mask)
-                    max_logit = tf.math.reduce_max(y_pred, axis=1, keepdims=True)
-                    # inner exponential sum
-                    pred_exp = tf.math.exp(y_pred - max_logit)
-                    exp_sum = tf.reduce_sum(pred_exp, axis=1, keepdims=True)
-                    log_sm = y_pred - max_logit - tf.math.log(exp_sum)
+                    log_sm = tf.nn.log_softmax(y_pred, axis=1)
                     # zero out non-active neurons for each sample
                     log_sm = tf.math.multiply(log_sm, active_mask)
                     loss_value = -tf.reduce_mean(tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True))
