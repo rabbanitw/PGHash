@@ -4,6 +4,17 @@ import tensorflow as tf
 from itertools import product
 
 if __name__ == '__main__':
+
+
+    a = np.zeros(675000)
+    b = np.arange(675000)
+    t = time.time()
+    for i in range(256):
+        # ind = np.random.choice(b, 70000, replace=False)
+        a[[1,2,3,4,5,6,7,8]] += 1
+    print(time.time()-t)
+
+    '''
     x = [i for i in product(range(2), repeat=11)]
     x = np.array(x).T
     base2_hash = x.T.dot(1 << np.arange(x.T.shape[-1]))
@@ -18,6 +29,7 @@ if __name__ == '__main__':
         outer_dict[base2_hash[hash_num]] = inner_dict
 
     print(outer_dict[3][2])
+    '''
 
 
 

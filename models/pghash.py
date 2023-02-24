@@ -5,6 +5,7 @@ from models.base import ModelHub
 from util.mlp import SparseNeuralNetwork
 from util.misc import compute_accuracy_lsh
 import time
+from lsh import pg_hashtable, slide_hashtable
 
 
 def get_unique_N(iterable, N):
@@ -74,7 +75,9 @@ class PGHash(ModelHub):
             acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
 
-    def lsh_avg_hamming(self, model, data, num_tables=2):
+
+
+    def lsh_vanilla(self, model, data, num_tables=50):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -85,45 +88,58 @@ class PGHash(ModelHub):
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
         bs_range = np.arange(bs)
-        cur_idx = [np.empty((num_tables, self.nl)) for _ in range(bs)]
+        local_active_counter = [np.zeros(self.nl) for _ in range(bs)]
+        global_active_counter = np.zeros(self.nl, dtype=bool)
+        full_size = np.arange(self.nl)
 
         for i in range(num_tables):
             # create gaussian matrix
-            pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
-                                                                    int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
 
-            # Apply PGHash to weights. CHECK THE self.final_dense
-            hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
+            # gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
+            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
 
             # Apply PG to input vector.
-            transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
+            transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
 
             # convert  data to base 2 to remove repeats
             base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
 
             for j in bs_range:
                 hc = base2_hash[j]
-                if hc in base2_hash[:j]:
-                    # if hamming distance is already computed
-                    h_idx = np.where(base2_hash[:j] == base2_hash[j])
-                    h_idx = h_idx[0][0]
-                    cur_idx[j][i, :] = cur_idx[h_idx][i, :]
-                else:
-                    # compute hamming distances
-                    cur_idx[j][i, :] = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
+                active_neurons = hash_dict[hc]
+                local_active_counter[j][active_neurons] += 1
+                global_active_counter[active_neurons] = True
 
-            full = np.sum(np.vstack(cur_idx), axis=0)
-            self.ci = topk_by_partition(full, self.num_c_layers)
+            unique = np.count_nonzero(global_active_counter)
+            if unique >= self.num_c_layers:
+                uniform_prob = 1/unique
+                p = uniform_prob * global_active_counter
+                gap = unique - self.num_c_layers
+                print(gap)
+                deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
+                global_active_counter[deactivate] = False
+                break
 
-            cur_idx = [self.ci for _ in bs_range]
+        for k in bs_range:
+            # shave off deactivated neurons
+            local_active_counter[k] = local_active_counter[k] * global_active_counter
+            # find where active neuron indices are
+            active_neuron_mask = local_active_counter[k] > 0
+            # select only active neurons for this sample
+            local_active_counter[k] = full_size[active_neuron_mask]
 
-            # update indices with new current index
-            self.bias_idx = self.ci + self.bias_start
+        self.ci = full_size[global_active_counter]
+        print(self.ci)
+        print(len(self.ci))
+        print(i)
 
-            # return self.ci, mask
-            return self.ci, cur_idx
+        # update indices with new current index
+        self.bias_idx = self.ci + self.bias_start
 
-    def lsh_hamming(self, model, data, greedy=True):
+        # return self.ci, list of per sample active neurons
+        return self.ci, local_active_counter
+
+    def lsh_hamming(self, model, data):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -134,69 +150,71 @@ class PGHash(ModelHub):
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
         bs_range = np.arange(bs)
-        cur_idx = [np.empty(self.nl) for _ in range(bs)]
+        local_active_counter = [np.zeros(self.nl) for _ in range(bs)]
+        selected_neuron_list = [[] for _ in range(bs)]
+        global_active_counter = np.zeros(self.nl, dtype=bool)
+        full_size = np.arange(self.nl)
 
-        # create gaussian matrix
-        pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
-                                                                int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
+        while True:
 
-        # Apply PGHash to weights.
-        hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
+            # create gaussian matrix
+            # pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
+            #                                                        int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
 
-        # Apply PG to input vector.
-        transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
+            pg_gaussian = np.random.normal(size=(self.sdim, self.hls))
 
-        # convert data to base 2 to remove repeats
-        base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
+            # Apply PGHash to weights.
+            hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
 
-        for j in bs_range:
-            hc = base2_hash[j]
-            if hc in base2_hash[:j]:
-                # if hamming distance is already computed
-                h_idx = np.where(base2_hash[:j] == hc)
-                h_idx = h_idx[0][0]
-                cur_idx[j] = cur_idx[h_idx]
+            # Apply PG to input vector.
+            transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
 
-            else:
-                # compute hamming distances
-                hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
-                # compute the topk closest average hamming distances to neuron
-                cur_idx[j] = np.argsort(hamm_dists)[:self.num_c_layers]
-                # cur_idx[j] = topk_by_partition(hamm_dists, self.num_c_layers)
+            # convert data to base 2 to remove repeats
+            base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
 
-        cur_idxs = np.vstack(cur_idx)
-        # make sure transposed to get top hamming distance for each sample (maybe should shuffle samples before too)
-        cur_idx_1d = cur_idxs.T.flatten()
+            for j in bs_range:
+                hc = base2_hash[j]
+                if hc in base2_hash[:j]:
+                    # if hamming distance is already computed
+                    h_idx = np.where(base2_hash[:j] == hc)
+                    h_idx = h_idx[0][0]
+                    selected_neurons = selected_neuron_list[h_idx]
+                    local_active_counter[j][selected_neurons] += 1
 
-        # first grab the known unique values
-        k = list(get_unique_N(cur_idx_1d, self.num_c_layers))
-        self.ci = np.sort(k)
-
-        # greedy method (just take the top), not as effective but much faster
-        if greedy:
-            cur_idx = [self.ci for _ in bs_range]
-
-            '''
-            # get first unique K values
-            k = list(get_unique_N2(cur_idx_1d, self.num_c_layers))
-            chosen_idx = np.sort(k[:-1])
-            chosen_cols, remainder = divmod(k[-1], bs)
-            for j in range(bs):
-                if j > remainder:
-                    cur_idx[j] = cur_idxs[j, :chosen_cols]
                 else:
-                    cur_idx[j] = cur_idxs[j, :chosen_cols + 1]
-            '''
+                    # compute hamming distances
+                    hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
+                    selected_neurons = full_size[hamm_dists < 2]  # choose 2 for now
+                    selected_neuron_list[j] = selected_neurons
+                    local_active_counter[j][selected_neurons] += 1
+                    global_active_counter[selected_neurons] = True
 
-        # proper method: get topK and then intersect to ensure all chosen are selected per sample
-        else:
-            for j in range(bs):
-                cur_idx[j] = cur_idx[j][np.in1d(cur_idx[j], self.ci, assume_unique=True)]
+            # WHAT WE CAN ALSO DO IS BUMP UP THE VALUE OF < FOR HAMMING UP UNTIL A CERTAIN AMOUNT AND THEN RERUN TABLE
+
+            unique = np.count_nonzero(global_active_counter)
+            if unique >= self.num_c_layers:
+                break
+
+        uniform_prob = 1 / unique
+        p = uniform_prob * global_active_counter
+        gap = unique - self.num_c_layers
+        deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
+        global_active_counter[deactivate] = False
+
+        for k in bs_range:
+            # shave off deactivated neurons
+            local_active_counter[k] = local_active_counter[k] * global_active_counter
+            # find where active neuron indices are
+            active_neuron_mask = local_active_counter[k] > 0
+            # select only active neurons for this sample
+            local_active_counter[k] = full_size[active_neuron_mask]
+
+        self.ci = full_size[global_active_counter]
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
 
-        return self.ci, cur_idx
+        return self.ci, local_active_counter
 
     def lsh_hamming_opt(self, model, data):
 
@@ -212,8 +230,10 @@ class PGHash(ModelHub):
         cur_idx = np.empty((self.num_c_layers, bs), dtype=np.int)
 
         # create gaussian matrix
-        pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
-                                                                int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
+        #pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
+        #                                                        int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
+
+        pg_gaussian = np.random.normal(size=(self.sdim, self.hls))
 
         # Apply PGHash to weights.
         hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
