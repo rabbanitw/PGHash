@@ -37,8 +37,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             # compute LSH
             lsh_init = time.time()
             # active_idx, sample_active_idx = Method.lsh_vanilla(Method.model, x_batch_train)
-            # active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
-            active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
+            active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
+            # active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
 
             if size > 1:
@@ -84,7 +84,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 nz = tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
                 y_true = y_true / nz
 
-                '''
+                # '''
                 # TRY TO CREATE MASK FROM INDICES WITHOUT HAVING TO USE FORLOOP (SAVE 0.025 seconds)
                 mask = np.zeros((batch_size, num_labels))
                 for j in range(batch_size):
@@ -101,10 +101,10 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 with tf.GradientTape() as tape:
                     # This is custom using only ACTIVE neurons as part of sum
                     y_pred = Method.model(x)
-                    # y_pred = tf.math.add(y_pred, softmax_mask)
+                    y_pred = tf.math.add(y_pred, softmax_mask)
                     log_sm = tf.nn.log_softmax(y_pred, axis=1)
                     # zero out non-active neurons for each sample
-                    # log_sm = tf.math.multiply(log_sm, active_mask)
+                    log_sm = tf.math.multiply(log_sm, active_mask)
                     loss_value = -tf.reduce_mean(tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True))
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)

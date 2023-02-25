@@ -187,7 +187,7 @@ class PGHash(ModelHub):
                 else:
                     # compute hamming distances
                     hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
-                    selected_neurons = full_size[hamm_dists < 1]  # choose 2 for now
+                    selected_neurons = full_size[hamm_dists < 2]  # choose 2 for now
                     selected_neuron_list[j] = selected_neurons
                     local_active_counter[j][selected_neurons] += 1
                     global_active_counter[selected_neurons] = True
