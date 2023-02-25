@@ -65,17 +65,24 @@ class PGHash(ModelHub):
             # set big model weights
             self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
 
-    def test_full_model(self, test_data, acc_meter):
+    def test_full_model(self, test_data, acc_meter, epoch_test=True):
         self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
         label_idx = np.arange(self.nl)
-        for (x_batch_test, y_batch_test) in test_data:
-            y_pred_test = self.big_model(x_batch_test, training=False)
-            test_batch = x_batch_test.get_shape()[0]
-            test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
-            acc_meter.update(test_acc1, test_batch)
+        if epoch_test:
+            for (x_batch_test, y_batch_test) in test_data:
+                y_pred_test = self.big_model(x_batch_test, training=False)
+                test_batch = x_batch_test.get_shape()[0]
+                test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
+                acc_meter.update(test_acc1, test_batch)
+        else:
+            test_data.shuffle(len(test_data))
+            sub_test_data = test_data.take(20)
+            for (x_batch_test, y_batch_test) in sub_test_data:
+                y_pred_test = self.big_model(x_batch_test, training=False)
+                test_batch = x_batch_test.get_shape()[0]
+                test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
+                acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
-
-
 
     def lsh_vanilla(self, model, data, num_tables=50):
 
@@ -115,7 +122,6 @@ class PGHash(ModelHub):
                 uniform_prob = 1/unique
                 p = uniform_prob * global_active_counter
                 gap = unique - self.num_c_layers
-                print(gap)
                 deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
                 global_active_counter[deactivate] = False
                 break
@@ -129,9 +135,6 @@ class PGHash(ModelHub):
             local_active_counter[k] = full_size[active_neuron_mask]
 
         self.ci = full_size[global_active_counter]
-        print(self.ci)
-        print(len(self.ci))
-        print(i)
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
@@ -184,7 +187,7 @@ class PGHash(ModelHub):
                 else:
                     # compute hamming distances
                     hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
-                    selected_neurons = full_size[hamm_dists < 2]  # choose 2 for now
+                    selected_neurons = full_size[hamm_dists < 1]  # choose 2 for now
                     selected_neuron_list[j] = selected_neurons
                     local_active_counter[j][selected_neurons] += 1
                     global_active_counter[selected_neurons] = True

@@ -37,8 +37,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             # compute LSH
             lsh_init = time.time()
             # active_idx, sample_active_idx = Method.lsh_vanilla(Method.model, x_batch_train)
-            active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
-            # active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
+            # active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
+            active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
 
             if size > 1:
@@ -54,7 +54,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 if iterations % args.steps_per_test == 0:
                     if rank == 0:
                         Method.update_full_model(Method.model)
-                        test_acc = Method.test_full_model(test_data, test_top1)
+                        test_acc = Method.test_full_model(test_data, test_top1, epoch_test=False)
                         print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                         recorder.add_testacc(test_acc)
                         test_top1.reset()
@@ -84,14 +84,14 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 nz = tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
                 y_true = y_true / nz
 
-                # '''
+                '''
                 # TRY TO CREATE MASK FROM INDICES WITHOUT HAVING TO USE FORLOOP (SAVE 0.025 seconds)
                 mask = np.zeros((batch_size, num_labels))
                 for j in range(batch_size):
                     mask[j, sample_active_idx[j + sub_batch_idx * args.train_bs]] = 1
                 mask = mask[:, active_idx]
                 active_mask = tf.convert_to_tensor(mask, dtype=tf.dtypes.float32)
-                softmax_mask = tf.where(active_mask == 1, 0., tf.float32.min / 10)
+                softmax_mask = tf.where(active_mask == 1, 0., tf.float32.min / 2)
                 # '''
 
                 # shorten the true label
@@ -101,10 +101,10 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 with tf.GradientTape() as tape:
                     # This is custom using only ACTIVE neurons as part of sum
                     y_pred = Method.model(x)
-                    y_pred = tf.math.add(y_pred, softmax_mask)
+                    # y_pred = tf.math.add(y_pred, softmax_mask)
                     log_sm = tf.nn.log_softmax(y_pred, axis=1)
                     # zero out non-active neurons for each sample
-                    log_sm = tf.math.multiply(log_sm, active_mask)
+                    # log_sm = tf.math.multiply(log_sm, active_mask)
                     loss_value = -tf.reduce_mean(tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True))
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
@@ -135,6 +135,14 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                                                 loss_value.numpy(), acc1, total_batches)
                     )
                 iterations += 1
+
+        # compute end of epoch testing
+        if rank == 0:
+            Method.update_full_model(Method.model)
+            test_acc = Method.test_full_model(test_data, test_top1, epoch_test=True)
+            print("Epoch %d: Top 1 Test Accuracy %.4f" % (epoch, test_acc))
+            recorder.add_testacc(test_acc)
+            test_top1.reset()
 
         # reset accuracy statistics for next epoch
         top1.reset()
