@@ -45,10 +45,14 @@ def topk_by_partition(input, k):
 
 class PGHash(ModelHub):
 
-    def __init__(self, num_labels, num_features, rank, size, influence, args):
+    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=2):
 
         super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.num_tables, args.cr, rank,
                          size, args.q, influence)
+
+        self.num_tables = num_tables
+        self.gaussians = [[] for _ in range(self.num_tables)]
+        self.hash_dicts = [[] for _ in range(self.num_tables)]
 
         # initialize full model for the root device for testing accuracy
         if self.rank == 0:
@@ -84,7 +88,14 @@ class PGHash(ModelHub):
                 acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
 
-    def lsh_vanilla(self, model, data, num_tables=50):
+    def rehash(self):
+        for i in range(self.num_tables):
+            # gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
+            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
+            self.gaussians[i] = gaussian
+            self.hash_dicts[i] = hash_dict
+
+    def lsh_vanilla(self, model, data, sparse_rehash=True):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -95,16 +106,21 @@ class PGHash(ModelHub):
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
         bs_range = np.arange(bs)
-        local_active_counter = [np.zeros(self.nl) for _ in range(bs)]
+        # local_active_counter = [np.zeros(self.nl) for _ in range(bs)]
+        local_active_counter = [np.zeros(self.nl, dtype=bool) for _ in range(bs)]
         global_active_counter = np.zeros(self.nl, dtype=bool)
         full_size = np.arange(self.nl)
         prev_global = None
 
-        for i in range(num_tables):
-            # create gaussian matrix
+        for i in range(self.num_tables):
 
-            # gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
-            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
+            # create gaussian matrix
+            if not sparse_rehash:
+                # gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
+                gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
+            else:
+                gaussian = self.gaussians[i]
+                hash_dict = self.hash_dicts[i]
 
             # Apply PG to input vector.
             transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
@@ -115,7 +131,8 @@ class PGHash(ModelHub):
             for j in bs_range:
                 hc = base2_hash[j]
                 active_neurons = hash_dict[hc]
-                local_active_counter[j][active_neurons] += 1
+                # local_active_counter[j][active_neurons] += 1
+                local_active_counter[j][active_neurons] = True
                 global_active_counter[active_neurons] = True
 
             unique = np.count_nonzero(global_active_counter)
@@ -126,6 +143,7 @@ class PGHash(ModelHub):
 
         # remove selected neurons (in a smart way)
         gap = unique - self.num_c_layers
+
         if gap > 0:
             if prev_global is None:
                 p = global_active_counter / unique
@@ -137,21 +155,32 @@ class PGHash(ModelHub):
             deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
             global_active_counter[deactivate] = False
 
-        for k in bs_range:
-            # shave off deactivated neurons
-            local_active_counter[k] = local_active_counter[k] * global_active_counter
-            # find where active neuron indices are
-            active_neuron_mask = local_active_counter[k] > 0
-            # select only active neurons for this sample
-            local_active_counter[k] = full_size[active_neuron_mask]
+            for k in bs_range:
+                # shave off deactivated neurons
+                local_active_counter[k] = local_active_counter[k] * global_active_counter
+                # find where active neuron indices are
+                active_neuron_mask = local_active_counter[k] > 0
+                # select only active neurons for this sample
+                local_active_counter[k] = full_size[active_neuron_mask]
 
         if gap >= 0:
             self.ci = full_size[global_active_counter]
         else:
             remaining_neurons = full_size[np.logical_not(global_active_counter)]
-            dead = np.random.choice(remaining_neurons, size=-gap, replace=False)
-            global_active_counter[dead] = True
+            global_active_counter[remaining_neurons[:-gap]] = True
             self.ci = full_size[global_active_counter]
+
+            #lens = []
+            for k in bs_range:
+                # find where active neuron indices are
+                # active_neuron_mask = local_active_counter[k] > 0
+                # select only active neurons for this sample
+                # local_active_counter[k] = full_size[active_neuron_mask]
+
+                # select only active neurons for this sample
+                local_active_counter[k] = full_size[local_active_counter[k]]
+                #lens.append(len(local_active_counter[k]))
+            #print(lens[:50])
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start

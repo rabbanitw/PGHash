@@ -18,6 +18,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
     num_labels = Method.nl
     num_features = Method.nf
+    steps_per_rehash = 50
 
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
@@ -36,7 +37,9 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
             # compute LSH
             lsh_init = time.time()
-            active_idx, sample_active_idx = Method.lsh_vanilla(Method.model, x_batch_train)
+            if (iterations-1) % steps_per_rehash == 0:
+                Method.rehash()
+            active_idx, sample_active_idx = Method.lsh_vanilla(Method.model, x_batch_train, sparse_rehash=True)
             # active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
             # active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
