@@ -2,6 +2,8 @@ import numpy as np
 import tensorflow as tf
 import time
 from util.misc import compute_accuracy_lsh
+from mpi4py import MPI
+import copy
 
 
 def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args):
@@ -18,7 +20,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
     num_labels = Method.nl
     num_features = Method.nf
-    steps_per_rehash = 50
+    steps_per_rehash = 1
+    prev_full = None
 
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
@@ -35,18 +38,28 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             # update full model
             Method.update_full_model(Method.model)
 
+            # REMOVE THIS FROM EPOCH TIME
+            if isinstance(prev_full, np.ndarray):
+                # reset fake neuron weights that adam messed up
+                Method.final_dense[:, fake_n] = prev_full
+                Method.full_model[Method.weight_idx:Method.bias_start] = Method.final_dense.flatten()
+                # reset fake neuron biases that adam messed up BELOW
+                Method.full_model[Method.bias_start:][fake_n] = prev_bias
+
+            # print(np.sum(Method.final_dense))
+
             # compute LSH
             lsh_init = time.time()
             if (iterations-1) % steps_per_rehash == 0:
                 Method.rehash()
-            active_idx, sample_active_idx = Method.lsh_vanilla(Method.model, x_batch_train, sparse_rehash=True)
+            active_idx, sample_active_idx, fake_n = Method.lsh_vanilla(Method.model, x_batch_train, sparse_rehash=True)
             # active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
             # active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
 
             if size > 1:
                 # send indices to root (server)
-                Method.exchange_idx()
+                comm_time1 = Method.exchange_idx()
 
             # update model
             Method.update_model()
@@ -61,6 +74,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                         print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                         recorder.add_testacc(test_acc)
                         test_top1.reset()
+                    MPI.COMM_WORLD.Barrier()
 
                 x = tf.sparse.slice(x_batch_train, start=[sub_batch_idx * args.train_bs, 0],
                                     size=[args.train_bs, num_features])
@@ -78,7 +92,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # communicate models amongst devices (if multiple devices are present)
                 if size > 1:
-                    model, comm_time = Method.communicate(Method.model, smart=smartavg)
+                    comm_time2 = Method.communicate(Method.model, smart=smartavg)
+                    comm_time = comm_time1 + comm_time2
 
                 # preprocess true label
                 y_true = tf.sparse.to_dense(y)
@@ -95,25 +110,27 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 mask = mask[:, active_idx]
                 active_mask = tf.convert_to_tensor(mask, dtype=tf.dtypes.float32)
                 nonactive_mask = tf.where(active_mask == 0, 1., 0.)
-                softmax_mask = tf.where(active_mask == 1, 0., tf.float32.min / 2)
+                softmax_mask = tf.where(active_mask == 1, 0., tf.float32.min)
 
                 # '''
-
                 # shorten the true label
                 y_true = tf.gather(y_true, indices=active_idx, axis=1)
+
+                # REMOVE THIS FROM EPOCH TIME
+                prev_full = np.copy(Method.final_dense[:, fake_n])
+                prev_bias = np.copy(Method.full_model[Method.bias_start:][fake_n])
 
                 # perform gradient update
                 with tf.GradientTape() as tape:
                     # This is custom using only ACTIVE neurons as part of sum
                     y_pred = Method.model(x)
-
-                    y_pred = tf.stop_gradient(nonactive_mask * y_pred) + active_mask * y_pred
-
                     y_pred = tf.math.add(y_pred, softmax_mask)
                     log_sm = tf.nn.log_softmax(y_pred, axis=1)
                     # zero out non-active neurons for each sample
                     log_sm = tf.math.multiply(log_sm, active_mask)
-                    loss_value = -tf.reduce_mean(tf.reduce_sum(tf.math.multiply(log_sm, y_true), axis=1, keepdims=True))
+                    smce = tf.math.multiply(log_sm, y_true)
+                    smce = tf.stop_gradient(nonactive_mask * smce) + active_mask * smce
+                    loss_value = -tf.reduce_mean(tf.reduce_sum(smce, axis=1, keepdims=True))
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
@@ -155,3 +172,4 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
         # reset accuracy statistics for next epoch
         top1.reset()
         losses.reset()
+        MPI.COMM_WORLD.Barrier()

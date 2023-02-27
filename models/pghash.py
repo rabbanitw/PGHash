@@ -45,7 +45,7 @@ def topk_by_partition(input, k):
 
 class PGHash(ModelHub):
 
-    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=2):
+    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=5):
 
         super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.num_tables, args.cr, rank,
                          size, args.q, influence)
@@ -143,7 +143,7 @@ class PGHash(ModelHub):
 
         # remove selected neurons (in a smart way)
         gap = unique - self.num_c_layers
-
+        print(unique)
         if gap > 0:
             if prev_global is None:
                 p = global_active_counter / unique
@@ -167,16 +167,12 @@ class PGHash(ModelHub):
             self.ci = full_size[global_active_counter]
         else:
             remaining_neurons = full_size[np.logical_not(global_active_counter)]
-            global_active_counter[remaining_neurons[:-gap]] = True
+            fake_neurons = remaining_neurons[:-gap]
+            global_active_counter[fake_neurons] = True
             self.ci = full_size[global_active_counter]
 
             #lens = []
             for k in bs_range:
-                # find where active neuron indices are
-                # active_neuron_mask = local_active_counter[k] > 0
-                # select only active neurons for this sample
-                # local_active_counter[k] = full_size[active_neuron_mask]
-
                 # select only active neurons for this sample
                 local_active_counter[k] = full_size[local_active_counter[k]]
                 #lens.append(len(local_active_counter[k]))
@@ -186,7 +182,7 @@ class PGHash(ModelHub):
         self.bias_idx = self.ci + self.bias_start
 
         # return self.ci, list of per sample active neurons
-        return self.ci, local_active_counter
+        return self.ci, local_active_counter, fake_neurons
 
     def lsh_hamming(self, model, data, num_tables=50, cutoff=2):
 
@@ -339,6 +335,7 @@ class PGHash(ModelHub):
         return self.ci, None
 
     def exchange_idx(self):
+        t = time.time()
         if self.rank == 0:
             self.device_idxs = np.empty((self.size, self.num_c_layers), dtype=np.int32)
         send_buf = -1*np.ones(self.num_c_layers, dtype=np.int32)
@@ -363,6 +360,7 @@ class PGHash(ModelHub):
             data = np.empty(self.unique_len, dtype=np.int32)
             MPI.COMM_WORLD.Bcast(data, root=0)
             self.unique = data
+        return time.time()-t
 
     def smart_average_vanilla(self, model):
 
@@ -429,7 +427,7 @@ class PGHash(ModelHub):
         # update the sub-architecture
         self.update_model()
 
-        return self.model, comm_time
+        return comm_time
 
     def simple_average(self, model):
 
@@ -446,7 +444,7 @@ class PGHash(ModelHub):
         self.full_model = recv_buffer
         # set new sub-model
         self.update_model()
-        return self.model, toc - tic
+        return toc - tic
 
     def communicate(self, model, smart=True):
 
@@ -457,9 +455,9 @@ class PGHash(ModelHub):
         if self.iter % (self.i1 + 1) == 0:
             self.comm_iter += 1
             if smart:
-                model, t = self.smart_average_vanilla(model)
+                t = self.smart_average_vanilla(model)
             else:
-                model, t = self.simple_average(model)
+                t = self.simple_average(model)
             comm_time += t
             # I2: Number of Consecutive 1-Step Averaging
             if self.comm_iter % self.i2 == 0:
@@ -467,4 +465,4 @@ class PGHash(ModelHub):
             else:
                 # decrease iteration by one in order to run another one update and average step (I2 communication)
                 self.iter -= 1
-        return model, comm_time
+        return comm_time
