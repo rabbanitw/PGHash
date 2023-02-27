@@ -80,7 +80,7 @@ class PGHash(ModelHub):
                 acc_meter.update(test_acc1, test_batch)
         else:
             test_data.shuffle(len(test_data))
-            sub_test_data = test_data.take(20)
+            sub_test_data = test_data.take(30)
             for (x_batch_test, y_batch_test) in sub_test_data:
                 y_pred_test = self.big_model(x_batch_test, training=False)
                 test_batch = x_batch_test.get_shape()[0]
@@ -143,7 +143,6 @@ class PGHash(ModelHub):
 
         # remove selected neurons (in a smart way)
         gap = unique - self.num_c_layers
-        print(unique)
         if gap > 0:
             if prev_global is None:
                 p = global_active_counter / unique
