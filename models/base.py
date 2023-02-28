@@ -33,6 +33,7 @@ class ModelHub:
         self.unique_idx = None
         self.count = None
         self.big_model = None
+        self.full_size = np.arange(self.nl)
 
         # initialize the start of the compressed network weights and the total number of compressed labels
         self.num_c_layers = int(self.cr * self.nl)

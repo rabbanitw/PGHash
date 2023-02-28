@@ -365,33 +365,20 @@ class PGHash(ModelHub):
 
     def exchange_idx_vanilla(self, bool_idx):
         t = time.time()
-        if self.rank == 0:
-            self.device_idxs = np.empty((self.size, self.nl), dtype=np.bool_)
-        MPI.COMM_WORLD.Gather(bool_idx, self.device_idxs, root=0)
-        if self.rank == 0:
-            full_size = np.arange(self.nl)
-            count = np.sum(self.device_idxs, axis=0)
-            self.count = count[count > 0]
-            total_active = np.zeros(self.nl, dtype=bool)
-            temp = []
-            for dev in range(self.size):
-                dev_bool = self.device_idxs[dev, :]
-                total_active += dev_bool
-                temp.append(full_size[dev_bool])
-            self.device_idxs = temp
-            self.unique = full_size[total_active]
-            self.unique_len = len(self.unique)
-            self.unique_idx = np.empty(self.nl, dtype=np.int64)
-            self.unique_idx[self.unique] = np.arange(self.unique_len)
-            MPI.COMM_WORLD.Bcast(np.array([self.unique_len]), root=0)
-            MPI.COMM_WORLD.Bcast(self.unique, root=0)
-        else:
-            data = np.empty(1, dtype=np.int64)
-            MPI.COMM_WORLD.Bcast(data, root=0)
-            self.unique_len = data[0]
-            data = np.empty(self.unique_len, dtype=np.int64)
-            MPI.COMM_WORLD.Bcast(data, root=0)
-            self.unique = data
+        dev_bools = np.empty((self.size, self.nl), dtype=np.bool_)
+        MPI.COMM_WORLD.Allgather(bool_idx, dev_bools)
+        count = np.sum(dev_bools, axis=0)
+        self.count = count[count > 0]
+        total_active = np.zeros(self.nl, dtype=bool)
+        self.device_idxs = []
+        for dev in range(self.size):
+            dev_bool = dev_bools[dev, :]
+            total_active += dev_bool
+            self.device_idxs.append(self.full_size[dev_bool])
+        self.unique = self.full_size[total_active]
+        self.unique_len = len(self.unique)
+        self.unique_idx = np.empty(self.nl, dtype=np.int64)
+        self.unique_idx[self.unique] = np.arange(self.unique_len)
         return time.time()-t
 
     def smart_average_vanilla(self, model, ci):
@@ -413,43 +400,19 @@ class PGHash(ModelHub):
         send_final_layer = self.final_dense[:, ci]
         send_final_bias = self.full_model[self.bias_start + ci]
 
-        if self.rank == 0:
-            updated_final_layer = np.zeros((self.hls, self.unique_len))
-            updated_final_bias = np.zeros(self.unique_len)
-            updated_final_layer[:, self.unique_idx[self.device_idxs[0]]] += send_final_layer
-            updated_final_bias[self.unique_idx[self.device_idxs[0]]] += send_final_bias
-            t = time.time()
-            # for memory I do not use mpi.gather
-            for device in range(1, self.size):
-                device_neurons = self.device_idxs[device]
-                total_dev_neurons = len(device_neurons)
-                recv_buffer_layer = np.empty(self.hls * total_dev_neurons, dtype=np.float32)
-                recv_buffer_bias = np.empty(total_dev_neurons, dtype=np.float32)
-                # receive and update final layer
-                MPI.COMM_WORLD.Recv(recv_buffer_layer, source=device)
-                update_indices = self.unique_idx[device_neurons]
-                updated_final_layer[:, update_indices] += recv_buffer_layer.reshape(self.hls, total_dev_neurons)
-                # receive and update final bias
-                MPI.COMM_WORLD.Recv(recv_buffer_bias, source=device)
-                updated_final_bias[update_indices] += recv_buffer_bias
-            # perform uniform averaging
-            updated_final_layer = updated_final_layer / self.count
-            updated_final_bias = updated_final_bias / self.count
-            # send updated layer back to all devices
-            MPI.COMM_WORLD.Bcast(updated_final_layer, root=0)
-            MPI.COMM_WORLD.Bcast(updated_final_bias, root=0)
-            comm_time += (time.time() - t)
-        else:
-            t = time.time()
-            # send sub architecture to root
-            MPI.COMM_WORLD.Send(send_final_layer.flatten(), dest=0)
-            MPI.COMM_WORLD.Send(send_final_bias, dest=0)
-            # receive updated changed final layer weights from root
-            updated_final_layer = np.empty((self.hls, self.unique_len))
-            updated_final_bias = np.empty(self.unique_len)
-            MPI.COMM_WORLD.Bcast(updated_final_layer, root=0)
-            MPI.COMM_WORLD.Bcast(updated_final_bias, root=0)
-            comm_time += (time.time() - t)
+        updated_final_layer = np.zeros((self.hls, self.unique_len))
+        updated_final_bias = np.zeros(self.unique_len)
+        updated_final_layer[:, self.unique_idx[self.device_idxs[self.rank]]] += send_final_layer
+        updated_final_bias[self.unique_idx[self.device_idxs[self.rank]]] += send_final_bias
+
+        send_buf = np.concatenate((updated_final_layer.flatten(), updated_final_bias))
+        recv_buf = np.empty((self.hls+1) * self.unique_len)
+        t = time.time()
+        MPI.COMM_WORLD.Allreduce(send_buf, recv_buf, op=MPI.SUM)
+        comm_time += (time.time() - t)
+
+        updated_final_layer = recv_buf[:-self.unique_len].reshape(self.hls, self.unique_len) / self.count
+        updated_final_bias = recv_buf[-self.unique_len:] / self.count
 
         # update the full model
         # set biases
@@ -500,3 +463,107 @@ class PGHash(ModelHub):
                 # decrease iteration by one in order to run another one update and average step (I2 communication)
                 self.iter -= 1
         return comm_time
+
+'''
+    def exchange_idx_vanilla(self, bool_idx):
+        t = time.time()
+        if self.rank == 0:
+            self.device_idxs = np.empty((self.size, self.nl), dtype=np.bool_)
+        MPI.COMM_WORLD.Gather(bool_idx, self.device_idxs, root=0)
+        if self.rank == 0:
+            full_size = np.arange(self.nl)
+            count = np.sum(self.device_idxs, axis=0)
+            self.count = count[count > 0]
+            total_active = np.zeros(self.nl, dtype=bool)
+            temp = []
+            for dev in range(self.size):
+                dev_bool = self.device_idxs[dev, :]
+                total_active += dev_bool
+                temp.append(full_size[dev_bool])
+            self.device_idxs = temp
+            self.unique = full_size[total_active]
+            self.unique_len = len(self.unique)
+            self.unique_idx = np.empty(self.nl, dtype=np.int64)
+            self.unique_idx[self.unique] = np.arange(self.unique_len)
+            MPI.COMM_WORLD.Bcast(np.array([self.unique_len]), root=0)
+            MPI.COMM_WORLD.Bcast(self.unique, root=0)
+        else:
+            data = np.empty(1, dtype=np.int64)
+            MPI.COMM_WORLD.Bcast(data, root=0)
+            self.unique_len = data[0]
+            data = np.empty(self.unique_len, dtype=np.int64)
+            MPI.COMM_WORLD.Bcast(data, root=0)
+            self.unique = data
+        return time.time()-t
+        
+    
+    def smart_average_vanilla(self, model, ci):
+    
+        # update the model
+        self.update_full_model(model)
+        comm_time = 0
+    
+        # create receiving buffer for first dense layer
+        recv_first_layer = np.empty_like(self.full_model[:self.weight_idx])
+        # Allreduce first layer of the network
+        t = time.time()
+        MPI.COMM_WORLD.Allreduce(self.influence * self.full_model[:self.weight_idx], recv_first_layer, op=MPI.SUM)
+        comm_time += (time.time() - t)
+        # update first layer
+        self.full_model[:self.weight_idx] = recv_first_layer
+    
+        # prepare the layers and biases to send
+        send_final_layer = self.final_dense[:, ci]
+        send_final_bias = self.full_model[self.bias_start + ci]
+    
+        # TO DO: make this process one all-reduce
+        if self.rank == 0:
+            updated_final_layer = np.zeros((self.hls, self.unique_len))
+            updated_final_bias = np.zeros(self.unique_len)
+            updated_final_layer[:, self.unique_idx[self.device_idxs[0]]] += send_final_layer
+            updated_final_bias[self.unique_idx[self.device_idxs[0]]] += send_final_bias
+            t = time.time()
+            # for memory I do not use mpi.gather
+            for device in range(1, self.size):
+                device_neurons = self.device_idxs[device]
+                total_dev_neurons = len(device_neurons)
+                recv_buffer_layer = np.empty(self.hls * total_dev_neurons, dtype=np.float32)
+                recv_buffer_bias = np.empty(total_dev_neurons, dtype=np.float32)
+                # receive and update final layer
+                MPI.COMM_WORLD.Recv(recv_buffer_layer, source=device)
+                update_indices = self.unique_idx[device_neurons]
+                updated_final_layer[:, update_indices] += recv_buffer_layer.reshape(self.hls, total_dev_neurons)
+                # receive and update final bias
+                MPI.COMM_WORLD.Recv(recv_buffer_bias, source=device)
+                updated_final_bias[update_indices] += recv_buffer_bias
+            # perform uniform averaging
+            updated_final_layer = updated_final_layer / self.count
+            updated_final_bias = updated_final_bias / self.count
+            # send updated layer back to all devices
+            MPI.COMM_WORLD.Bcast(updated_final_layer, root=0)
+            MPI.COMM_WORLD.Bcast(updated_final_bias, root=0)
+            comm_time += (time.time() - t)
+        else:
+            t = time.time()
+            # send sub architecture to root
+            MPI.COMM_WORLD.Send(send_final_layer.flatten(), dest=0)
+            MPI.COMM_WORLD.Send(send_final_bias, dest=0)
+            # receive updated changed final layer weights from root
+            updated_final_layer = np.empty((self.hls, self.unique_len))
+            updated_final_bias = np.empty(self.unique_len)
+            MPI.COMM_WORLD.Bcast(updated_final_layer, root=0)
+            MPI.COMM_WORLD.Bcast(updated_final_bias, root=0)
+            comm_time += (time.time() - t)
+    
+        # update the full model
+        # set biases
+        self.full_model[self.bias_start + self.unique] = updated_final_bias
+        # set weights
+        self.final_dense[:, self.unique] = updated_final_layer
+        self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
+    
+        # update the sub-architecture
+        self.update_model()
+    
+        return comm_time
+'''

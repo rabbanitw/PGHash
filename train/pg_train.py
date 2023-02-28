@@ -98,10 +98,12 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 init_time = time.time()
 
                 # communicate models amongst devices (if multiple devices are present)
+                # t = time.time()
                 if size > 1:
                     comm_time2 = Method.communicate(Method.model, full_size[true_neurons_bool], smart=smartavg)
                     # comm_time2 = 0
                     comm_time = comm_time1 + comm_time2
+                # print(time.time()-t)
 
                 # preprocess true label
                 y_true = tf.sparse.to_dense(y)
