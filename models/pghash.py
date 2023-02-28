@@ -413,10 +413,6 @@ class PGHash(ModelHub):
         send_final_layer = self.final_dense[:, ci]
         send_final_bias = self.full_model[self.bias_start + ci]
 
-        #print(self.final_dense[:10, 0:4])
-
-        MPI.COMM_WORLD.Barrier()
-
         if self.rank == 0:
             updated_final_layer = np.zeros((self.hls, self.unique_len))
             updated_final_bias = np.zeros(self.unique_len)
@@ -427,12 +423,12 @@ class PGHash(ModelHub):
             for device in range(1, self.size):
                 device_neurons = self.device_idxs[device]
                 total_dev_neurons = len(device_neurons)
-                recv_buffer_layer = np.empty((self.hls, total_dev_neurons), dtype=np.float32)
+                recv_buffer_layer = np.empty(self.hls * total_dev_neurons, dtype=np.float32)
                 recv_buffer_bias = np.empty(total_dev_neurons, dtype=np.float32)
                 # receive and update final layer
                 MPI.COMM_WORLD.Recv(recv_buffer_layer, source=device)
                 update_indices = self.unique_idx[device_neurons]
-                updated_final_layer[:, update_indices] += recv_buffer_layer
+                updated_final_layer[:, update_indices] += recv_buffer_layer.reshape(self.hls, total_dev_neurons)
                 # receive and update final bias
                 MPI.COMM_WORLD.Recv(recv_buffer_bias, source=device)
                 updated_final_bias[update_indices] += recv_buffer_bias
@@ -446,7 +442,7 @@ class PGHash(ModelHub):
         else:
             t = time.time()
             # send sub architecture to root
-            MPI.COMM_WORLD.Send(send_final_layer, dest=0)
+            MPI.COMM_WORLD.Send(send_final_layer.flatten(), dest=0)
             MPI.COMM_WORLD.Send(send_final_bias, dest=0)
             # receive updated changed final layer weights from root
             updated_final_layer = np.empty((self.hls, self.unique_len))
@@ -461,8 +457,6 @@ class PGHash(ModelHub):
         # set weights
         self.final_dense[:, self.unique] = updated_final_layer
         self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
-
-        #print(self.final_dense[:10, 0:4])
 
         # update the sub-architecture
         self.update_model()
