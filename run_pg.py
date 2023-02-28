@@ -91,8 +91,8 @@ if __name__ == '__main__':
         recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
 
         # initialize model
-        # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-        optimizer = tf.keras.optimizers.SGD(learning_rate=args.lr)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+        # optimizer = tf.keras.optimizers.SGD(learning_rate=args.lr)
         print('Initializing model...')
         if method == 'PGHash':
             Method = PGHash(n_labels, n_features, rank, size, 1 / size, args)

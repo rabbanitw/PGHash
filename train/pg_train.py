@@ -3,7 +3,6 @@ import tensorflow as tf
 import time
 from util.misc import compute_accuracy_lsh
 from mpi4py import MPI
-import copy
 
 
 def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args):
@@ -13,15 +12,18 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
     iterations = 1
     test_acc = np.NaN
     comm_time = 0
+    smartavg = True
+    '''
     if args.cr == 1:
         smartavg = False
     else:
         smartavg = True
-
+    '''
     num_labels = Method.nl
     num_features = Method.nf
-    steps_per_rehash = 1
-    prev_full = None
+    steps_per_rehash = 50
+    full_size = np.arange(num_labels)
+    fake_n = None
 
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
@@ -39,27 +41,32 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             Method.update_full_model(Method.model)
 
             # REMOVE THIS FROM EPOCH TIME
-            if isinstance(prev_full, np.ndarray):
+            '''
+            if isinstance(fake_n, np.ndarray):
                 # reset fake neuron weights that adam messed up
                 Method.final_dense[:, fake_n] = prev_full
-                Method.full_model[Method.weight_idx:Method.bias_start] = Method.final_dense.flatten()
                 # reset fake neuron biases that adam messed up BELOW
                 Method.full_model[Method.bias_start:][fake_n] = prev_bias
-
-            # print(np.sum(Method.final_dense))
+            '''
 
             # compute LSH
             lsh_init = time.time()
             if (iterations-1) % steps_per_rehash == 0:
                 Method.rehash()
-            active_idx, sample_active_idx, fake_n = Method.lsh_vanilla(Method.model, x_batch_train, sparse_rehash=True)
+            active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla(Method.model, x_batch_train,
+                                                                                          sparse_rehash=True)
             # active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
             # active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
 
             if size > 1:
                 # send indices to root (server)
-                comm_time1 = Method.exchange_idx()
+                # comm_time1 = Method.exchange_idx()
+                comm_time1 = Method.exchange_idx_vanilla(true_neurons_bool)
+
+            # REMOVE THIS FROM EPOCH TIME
+            # prev_full = np.copy(Method.final_dense[:, fake_n])
+            # prev_bias = np.copy(Method.full_model[Method.bias_start:][fake_n])
 
             # update model
             Method.update_model()
@@ -92,7 +99,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 # communicate models amongst devices (if multiple devices are present)
                 if size > 1:
-                    comm_time2 = Method.communicate(Method.model, smart=smartavg)
+                    comm_time2 = Method.communicate(Method.model, full_size[true_neurons_bool], smart=smartavg)
+                    # comm_time2 = 0
                     comm_time = comm_time1 + comm_time2
 
                 # preprocess true label
@@ -115,10 +123,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 # '''
                 # shorten the true label
                 y_true = tf.gather(y_true, indices=active_idx, axis=1)
-
-                # REMOVE THIS FROM EPOCH TIME
-                prev_full = np.copy(Method.final_dense[:, fake_n])
-                prev_bias = np.copy(Method.full_model[Method.bias_start:][fake_n])
 
                 # perform gradient update
                 with tf.GradientTape() as tape:

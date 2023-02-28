@@ -47,8 +47,8 @@ class PGHash(ModelHub):
 
     def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=5):
 
-        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.num_tables, args.cr, rank,
-                         size, args.q, influence)
+        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, args.q,
+                         influence)
 
         self.num_tables = num_tables
         self.gaussians = [[] for _ in range(self.num_tables)]
@@ -162,10 +162,12 @@ class PGHash(ModelHub):
                 # select only active neurons for this sample
                 local_active_counter[k] = full_size[active_neuron_mask]
 
-        if gap >= 0:
             self.ci = full_size[global_active_counter]
+            fake_neurons = None
+            true_neurons_bool = global_active_counter
         else:
             remaining_neurons = full_size[np.logical_not(global_active_counter)]
+            true_neurons_bool = np.copy(global_active_counter)
             fake_neurons = remaining_neurons[:-gap]
             global_active_counter[fake_neurons] = True
             self.ci = full_size[global_active_counter]
@@ -181,7 +183,7 @@ class PGHash(ModelHub):
         self.bias_idx = self.ci + self.bias_start
 
         # return self.ci, list of per sample active neurons
-        return self.ci, local_active_counter, fake_neurons
+        return self.ci, local_active_counter, true_neurons_bool, fake_neurons
 
     def lsh_hamming(self, model, data, num_tables=50, cutoff=2):
 
@@ -361,7 +363,38 @@ class PGHash(ModelHub):
             self.unique = data
         return time.time()-t
 
-    def smart_average_vanilla(self, model):
+    def exchange_idx_vanilla(self, bool_idx):
+        t = time.time()
+        if self.rank == 0:
+            self.device_idxs = np.empty((self.size, self.nl), dtype=np.bool_)
+        MPI.COMM_WORLD.Gather(bool_idx, self.device_idxs, root=0)
+        if self.rank == 0:
+            full_size = np.arange(self.nl)
+            count = np.sum(self.device_idxs, axis=0)
+            self.count = count[count > 0]
+            total_active = np.zeros(self.nl, dtype=bool)
+            temp = []
+            for dev in range(self.size):
+                dev_bool = self.device_idxs[dev, :]
+                total_active += dev_bool
+                temp.append(full_size[dev_bool])
+            self.device_idxs = temp
+            self.unique = full_size[total_active]
+            self.unique_len = len(self.unique)
+            self.unique_idx = np.empty(self.nl, dtype=np.int64)
+            self.unique_idx[self.unique] = np.arange(self.unique_len)
+            MPI.COMM_WORLD.Bcast(np.array([self.unique_len]), root=0)
+            MPI.COMM_WORLD.Bcast(self.unique, root=0)
+        else:
+            data = np.empty(1, dtype=np.int64)
+            MPI.COMM_WORLD.Bcast(data, root=0)
+            self.unique_len = data[0]
+            data = np.empty(self.unique_len, dtype=np.int64)
+            MPI.COMM_WORLD.Bcast(data, root=0)
+            self.unique = data
+        return time.time()-t
+
+    def smart_average_vanilla(self, model, ci):
 
         # update the model
         self.update_full_model(model)
@@ -377,8 +410,12 @@ class PGHash(ModelHub):
         self.full_model[:self.weight_idx] = recv_first_layer
 
         # prepare the layers and biases to send
-        send_final_layer = self.final_dense[:, self.ci]
-        send_final_bias = self.full_model[self.bias_idx]
+        send_final_layer = self.final_dense[:, ci]
+        send_final_bias = self.full_model[self.bias_start + ci]
+
+        #print(self.final_dense[:10, 0:4])
+
+        MPI.COMM_WORLD.Barrier()
 
         if self.rank == 0:
             updated_final_layer = np.zeros((self.hls, self.unique_len))
@@ -388,15 +425,17 @@ class PGHash(ModelHub):
             t = time.time()
             # for memory I do not use mpi.gather
             for device in range(1, self.size):
-                recv_buffer_layer = np.empty(self.hls * self.num_c_layers)
-                recv_buffer_bias = np.empty(self.num_c_layers)
+                device_neurons = self.device_idxs[device]
+                total_dev_neurons = len(device_neurons)
+                recv_buffer_layer = np.empty((self.hls, total_dev_neurons), dtype=np.float32)
+                recv_buffer_bias = np.empty(total_dev_neurons, dtype=np.float32)
                 # receive and update final layer
                 MPI.COMM_WORLD.Recv(recv_buffer_layer, source=device)
-                updated_final_layer[:, self.unique_idx[self.device_idxs[device]]] \
-                    += recv_buffer_layer.reshape(self.hls, self.num_c_layers)
+                update_indices = self.unique_idx[device_neurons]
+                updated_final_layer[:, update_indices] += recv_buffer_layer
                 # receive and update final bias
                 MPI.COMM_WORLD.Recv(recv_buffer_bias, source=device)
-                updated_final_bias[self.unique_idx[self.device_idxs[device]]] += recv_buffer_bias
+                updated_final_bias[update_indices] += recv_buffer_bias
             # perform uniform averaging
             updated_final_layer = updated_final_layer / self.count
             updated_final_bias = updated_final_bias / self.count
@@ -407,7 +446,7 @@ class PGHash(ModelHub):
         else:
             t = time.time()
             # send sub architecture to root
-            MPI.COMM_WORLD.Send(send_final_layer.flatten(), dest=0)
+            MPI.COMM_WORLD.Send(send_final_layer, dest=0)
             MPI.COMM_WORLD.Send(send_final_bias, dest=0)
             # receive updated changed final layer weights from root
             updated_final_layer = np.empty((self.hls, self.unique_len))
@@ -422,6 +461,8 @@ class PGHash(ModelHub):
         # set weights
         self.final_dense[:, self.unique] = updated_final_layer
         self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
+
+        #print(self.final_dense[:10, 0:4])
 
         # update the sub-architecture
         self.update_model()
@@ -445,7 +486,7 @@ class PGHash(ModelHub):
         self.update_model()
         return toc - tic
 
-    def communicate(self, model, smart=True):
+    def communicate(self, model, ci, smart=True):
 
         # have to have this here because of the case that i1 = 0 (cant do 0 % 0)
         self.iter += 1
@@ -454,7 +495,7 @@ class PGHash(ModelHub):
         if self.iter % (self.i1 + 1) == 0:
             self.comm_iter += 1
             if smart:
-                t = self.smart_average_vanilla(model)
+                t = self.smart_average_vanilla(model, ci)
             else:
                 t = self.simple_average(model)
             comm_time += t
