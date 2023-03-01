@@ -39,10 +39,14 @@ class Adam(tf.Module):
         # Perform Adam updates
         active_idx = [[x] for x in final_layer_active_neurons]
         inactive_idx = [[x] for x in final_layer_inactive_neurons]
+        if len(active_idx) == 0:
+            flag = True
+        else:
+            flag = False
         zero_update_layer = tf.zeros([len(final_layer_inactive_neurons), hls], dtype=tf.float32)
         zero_update_bias = tf.zeros([len(final_layer_inactive_neurons)], dtype=tf.float32)
         for i, (d_var, var) in enumerate(zip(grads, vars)):
-            if i < fli:
+            if i < fli or flag:
                 d_var = tf.convert_to_tensor(d_var)
                 # Moment calculation
                 self.v_dvar[i] = self.beta_1*self.v_dvar[i] + (1-self.beta_1)*d_var

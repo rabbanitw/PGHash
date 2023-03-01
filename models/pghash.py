@@ -45,7 +45,7 @@ def topk_by_partition(input, k):
 
 class PGHash(ModelHub):
 
-    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=5):
+    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=50):
 
         super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, args.q,
                          influence)
