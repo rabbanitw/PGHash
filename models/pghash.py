@@ -45,7 +45,7 @@ def topk_by_partition(input, k):
 
 class PGHash(ModelHub):
 
-    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=5):
+    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=50):
 
         super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, args.q,
                          influence)
@@ -157,10 +157,8 @@ class PGHash(ModelHub):
             for k in bs_range:
                 # shave off deactivated neurons
                 local_active_counter[k] = local_active_counter[k] * global_active_counter
-                # find where active neuron indices are
-                active_neuron_mask = local_active_counter[k] > 0
                 # select only active neurons for this sample
-                local_active_counter[k] = full_size[active_neuron_mask]
+                local_active_counter[k] = full_size[local_active_counter[k]]
 
             self.ci = full_size[global_active_counter]
             fake_neurons = None
@@ -182,10 +180,9 @@ class PGHash(ModelHub):
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
 
-        # return self.ci, list of per sample active neurons
         return self.ci, local_active_counter, true_neurons_bool, fake_neurons
 
-    def lsh_hamming(self, model, data, num_tables=50, cutoff=2):
+    def lsh_hamming(self, model, data, num_tables=5, cutoff=2):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -196,11 +193,10 @@ class PGHash(ModelHub):
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
         bs_range = np.arange(bs)
-        local_active_counter = [np.zeros(self.nl) for _ in range(bs)]
+        local_active_counter = [np.zeros(self.nl, dtype=bool) for _ in range(bs)]
         selected_neuron_list = [[] for _ in range(bs)]
         global_active_counter = np.zeros(self.nl, dtype=bool)
         prev_global = None
-        full_size = np.arange(self.nl)
         thresh = 1
 
         for i in range(num_tables):
@@ -227,13 +223,13 @@ class PGHash(ModelHub):
                     h_idx = np.where(base2_hash[:j] == hc)
                     h_idx = h_idx[0][0]
                     selected_neurons = selected_neuron_list[h_idx]
-                    local_active_counter[j][selected_neurons] += 1
+                    local_active_counter[j][selected_neurons] = True
                 else:
                     # compute hamming distances
                     hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
-                    selected_neurons = full_size[hamm_dists < thresh]  # choose 2 for now
+                    selected_neurons = self.full_size[hamm_dists < thresh]  # choose 2 for now
                     selected_neuron_list[j] = selected_neurons
-                    local_active_counter[j][selected_neurons] += 1
+                    local_active_counter[j][selected_neurons] = True
                     global_active_counter[selected_neurons] = True
 
             # WHAT WE CAN ALSO DO IS BUMP UP THE VALUE OF < FOR HAMMING UP UNTIL A CERTAIN AMOUNT AND THEN RERUN TABLE
@@ -243,40 +239,47 @@ class PGHash(ModelHub):
                 break
             else:
                 prev_global = np.copy(global_active_counter)
-            thresh = cutoff
+                # after 2 tables if haven't filled then increase the match size
+                if i == 1:
+                    thresh = cutoff
+                elif i == num_tables-2:
+                    thresh = int(self.sdim/2)
 
         # remove selected neurons (in a smart way)
         gap = unique - self.num_c_layers
-        if prev_global is None:
-            p = global_active_counter / unique
-        else:
-            # remove most recent selected neurons if multiple tables are used
-            change = global_active_counter != prev_global
-            p = change / np.count_nonzero(change)
 
-        deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
-        global_active_counter[deactivate] = False
+        if gap > 0:
+            if prev_global is None:
+                p = global_active_counter / unique
+            else:
+                # remove most recent selected neurons if multiple tables are used
+                change = global_active_counter != prev_global
+                p = change / np.count_nonzero(change)
+
+            deactivate = np.random.choice(self.full_size, size=gap, replace=False, p=p)
+            global_active_counter[deactivate] = False
 
         for k in bs_range:
             # shave off deactivated neurons
             local_active_counter[k] = local_active_counter[k] * global_active_counter
-            # find where active neuron indices are
-            active_neuron_mask = local_active_counter[k] > 0
             # select only active neurons for this sample
-            local_active_counter[k] = full_size[active_neuron_mask]
+            local_active_counter[k] = self.full_size[local_active_counter[k]]
 
         if gap >= 0:
-            self.ci = full_size[global_active_counter]
+            self.ci = self.full_size[global_active_counter]
+            fake_neurons = None
+            true_neurons_bool = global_active_counter
         else:
-            remaining_neurons = full_size[np.logical_not(global_active_counter)]
-            dead = np.random.choice(remaining_neurons, size=-gap, replace=False)
-            global_active_counter[dead] = True
-            self.ci = full_size[global_active_counter]
+            remaining_neurons = self.full_size[np.logical_not(global_active_counter)]
+            true_neurons_bool = np.copy(global_active_counter)
+            fake_neurons = remaining_neurons[:-gap]
+            global_active_counter[fake_neurons] = True
+            self.ci = self.full_size[global_active_counter]
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
 
-        return self.ci, local_active_counter
+        return self.ci, local_active_counter, true_neurons_bool, fake_neurons
 
     def lsh_hamming_opt(self, model, data):
 
@@ -390,6 +393,7 @@ class PGHash(ModelHub):
         # create receiving buffer for first dense layer
         recv_first_layer = np.empty_like(self.full_model[:self.weight_idx])
         # Allreduce first layer of the network
+        MPI.COMM_WORLD.Barrier()
         t = time.time()
         MPI.COMM_WORLD.Allreduce(self.influence * self.full_model[:self.weight_idx], recv_first_layer, op=MPI.SUM)
         comm_time += (time.time() - t)
