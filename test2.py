@@ -6,13 +6,27 @@ from itertools import product
 if __name__ == '__main__':
 
 
-    a = np.zeros(675000)
-    b = np.arange(675000)
-    t = time.time()
-    for i in range(256):
-        # ind = np.random.choice(b, 70000, replace=False)
-        a[[1,2,3,4,5,6,7,8]] += 1
-    print(time.time()-t)
+    t4 = tf.constant([[0, 5],
+                      [1, 6],
+                      [2, 7],
+                      [3, 8],
+                      [4, 9]])
+
+    update = tf.zeros([3, 2], dtype=tf.int32)
+
+    print(t4.shape)
+
+    print(tf.tensor_scatter_nd_update(t4, indices=[[2], [3], [0]], updates=update, name=None))
+
+    print(tf.gather_nd(t4,
+                       indices=[[2], [3], [0]]))
+
+    t = tf.random.uniform(shape=[10])
+
+    u = tf.zeros([3], dtype=tf.float32)
+
+    print(tf.tensor_scatter_nd_update(t, indices=[[2], [3], [0]], updates=u, name=None))
+
 
     '''
     x = [i for i in product(range(2), repeat=11)]

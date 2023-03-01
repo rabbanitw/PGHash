@@ -55,7 +55,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 Method.rehash()
             active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla(Method.model, x_batch_train,
                                                                                           sparse_rehash=True)
-            # active_idx, sample_active_idx = Method.lsh_hamming(Method.model, x_batch_train)
+            # active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_hamming(Method.model, x_batch_train)
             # active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
 
@@ -139,7 +139,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     loss_value = -tf.reduce_mean(tf.reduce_sum(smce, axis=1, keepdims=True))
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
-                optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
+                # optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
+                optimizer.apply_gradients(grads, Method.model.trainable_weights, full_size[true_neurons_bool], fake_n)
 
                 # compute accuracy (top 1) and loss for the minibatch
                 rec_init = time.time()
