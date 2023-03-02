@@ -22,7 +22,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
     num_labels = Method.nl
     num_features = Method.nf
     steps_per_rehash = 50
-    full_size = np.arange(num_labels)
     fake_n = None
 
     for epoch in range(1, args.epochs+1):
@@ -58,6 +57,11 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             # active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_hamming(Method.model, x_batch_train)
             # active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
             lsh_time = time.time() - lsh_init
+
+            # transformed index
+            active_neurons = Method.full_size[true_neurons_bool]
+            translated = np.empty(num_labels, dtype=np.int)
+            translated[active_idx] = np.arange(len(active_idx))
 
             if size > 1:
                 # send indices to root (server)
@@ -100,7 +104,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 # communicate models amongst devices (if multiple devices are present)
                 # t = time.time()
                 if size > 1:
-                    comm_time2 = Method.communicate(Method.model, full_size[true_neurons_bool], smart=smartavg)
+                    comm_time2 = Method.communicate(Method.model, active_neurons, smart=smartavg)
                     # comm_time2 = 0
                     comm_time = comm_time1 + comm_time2
                 # print(time.time()-t)
@@ -140,7 +144,8 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
                 # optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
-                optimizer.apply_gradients(grads, Method.model.trainable_weights, full_size[true_neurons_bool], fake_n)
+                optimizer.apply_gradients(grads, Method.model.trainable_weights, translated[active_neurons],
+                                          translated[fake_n])
 
                 # compute accuracy (top 1) and loss for the minibatch
                 rec_init = time.time()

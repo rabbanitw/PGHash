@@ -45,7 +45,7 @@ def topk_by_partition(input, k):
 
 class PGHash(ModelHub):
 
-    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=50):
+    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=5):
 
         super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, args.q,
                          influence)
@@ -161,7 +161,7 @@ class PGHash(ModelHub):
                 local_active_counter[k] = full_size[local_active_counter[k]]
 
             self.ci = full_size[global_active_counter]
-            fake_neurons = None
+            fake_neurons = []
             true_neurons_bool = global_active_counter
         else:
             remaining_neurons = full_size[np.logical_not(global_active_counter)]
