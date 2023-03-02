@@ -39,7 +39,7 @@ class Adam(tf.Module):
         # Perform Adam updates
         active_idx = [[x] for x in final_layer_active_neurons]
         inactive_idx = [[x] for x in final_layer_inactive_neurons]
-        if len(active_idx) == 0:
+        if len(inactive_idx) == 0:
             flag = True
         else:
             flag = False
