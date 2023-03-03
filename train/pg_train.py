@@ -143,9 +143,9 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     loss_value = -tf.reduce_mean(tf.reduce_sum(smce, axis=1, keepdims=True))
 
                 grads = tape.gradient(loss_value, Method.model.trainable_weights)
-                # optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
-                optimizer.apply_gradients(grads, Method.model.trainable_weights, translated[active_neurons],
-                                          translated[fake_n])
+                optimizer.apply_gradients(zip(grads, Method.model.trainable_weights))
+                # optimizer.apply_gradients(grads, Method.model.trainable_weights, translated[active_neurons],
+                #                          translated[fake_n])
 
                 # compute accuracy (top 1) and loss for the minibatch
                 rec_init = time.time()

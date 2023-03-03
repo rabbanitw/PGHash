@@ -88,12 +88,18 @@ class PGHash(ModelHub):
                 acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
 
-    def rehash(self):
-        for i in range(self.num_tables):
-            # gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
-            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
-            self.gaussians[i] = gaussian
-            self.hash_dicts[i] = hash_dict
+    def rehash(self, slide=True):
+
+        if slide:
+            for i in range(self.num_tables):
+                gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
+                self.gaussians[i] = gaussian
+                self.hash_dicts[i] = hash_dict
+        else:
+            for i in range(self.num_tables):
+                gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
+                self.gaussians[i] = gaussian
+                self.hash_dicts[i] = hash_dict
 
     def lsh_vanilla(self, model, data, sparse_rehash=True):
 
