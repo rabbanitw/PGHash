@@ -104,17 +104,18 @@ if __name__ == '__main__':
     parser.add_argument('--graph_type', type=str, default='fully_connected')
     parser.add_argument('--hash_type', type=str, default='pghash')
     parser.add_argument('--randomSeed', type=int, default=1203)
-    parser.add_argument('--sdim', type=int, default=9)
-    parser.add_argument('--num_tables', type=int, default=1)
+    parser.add_argument('--sdim', type=int, default=8)
+    parser.add_argument('--num_tables', type=int, default=200)
     parser.add_argument('--lr', type=int, default=1e-4)
-    parser.add_argument('--cr', type=float, default=0.1)
+    parser.add_argument('--cr', type=float, default=0.2)
     parser.add_argument('--train_bs', type=int, default=128)
     parser.add_argument('--test_bs', type=int, default=4096)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
     parser.add_argument('--steps_per_test', type=int, default=100)
-    parser.add_argument('--epochs', type=int, default=5)
+    parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
-    parser.add_argument('--q', type=int, default=50)
+    parser.add_argument('--slide', type=int, default=0)
+    parser.add_argument('--q', type=int, default=1)
 
     # parse the argument
     args = parser.parse_args()
@@ -175,7 +176,6 @@ if __name__ == '__main__':
         # initialize model
         # optimizer = Adam(learning_rate=args.lr)
         optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-        # optimizer = tf.keras.optimizers.SGD(learning_rate=args.lr)
         print('Initializing model...')
         if method == 'PGHash':
             Method = PGHash(n_labels, n_features, rank, size, 1 / size, args)

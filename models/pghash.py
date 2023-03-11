@@ -45,12 +45,13 @@ def topk_by_partition(input, k):
 
 class PGHash(ModelHub):
 
-    def __init__(self, num_labels, num_features, rank, size, influence, args, num_tables=50):
+    def __init__(self, num_labels, num_features, rank, size, influence, args):
 
         super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, args.q,
                          influence)
 
-        self.num_tables = num_tables
+        self.num_tables = args.num_tables
+        self.slide = args.slide
         self.gaussians = [[] for _ in range(self.num_tables)]
         self.hash_dicts = [[] for _ in range(self.num_tables)]
 
@@ -88,9 +89,9 @@ class PGHash(ModelHub):
                 acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
 
-    def rehash(self, slide=True):
+    def rehash(self):
 
-        if slide:
+        if self.slide:
             for i in range(self.num_tables):
                 gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
                 self.gaussians[i] = gaussian
@@ -122,8 +123,10 @@ class PGHash(ModelHub):
 
             # create gaussian matrix
             if not sparse_rehash:
-                # gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
-                gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
+                if self.slide:
+                    gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
+                else:
+                    gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
             else:
                 gaussian = self.gaussians[i]
                 hash_dict = self.hash_dicts[i]

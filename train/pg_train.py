@@ -21,8 +21,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
     '''
     num_labels = Method.nl
     num_features = Method.nf
-    steps_per_rehash = 50
-    fake_n = None
+    steps_per_rehash = args.steps_per_lsh
 
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
