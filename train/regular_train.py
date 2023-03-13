@@ -74,7 +74,7 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
 
             # store and save accuracy and loss values
             recorder.add_new((comp_time + comm_time), comp_time, comm_time, lsh_time, acc1, test_acc,
-                             loss_value.numpy(), top1.avg, losses.avg)
+                             loss_value.numpy(), top1.avg, losses.avg, Method.nl)
             recorder.save_to_file()
 
             # log every X batches
