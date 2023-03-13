@@ -10,11 +10,9 @@ class SLIDE(ModelHub):
 
     def __init__(self, num_labels, num_features, rank, size, influence, args):
 
-        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, args.q,
-                         influence)
+        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, influence)
 
         self.num_tables = args.num_tables
-        self.slide = args.slide
         self.gaussians = [[] for _ in range(self.num_tables)]
         self.hash_dicts = [[] for _ in range(self.num_tables)]
 

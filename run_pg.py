@@ -114,7 +114,6 @@ if __name__ == '__main__':
     parser.add_argument('--steps_per_test', type=int, default=100)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
-    parser.add_argument('--q', type=int, default=1)
 
     # parse the argument
     args = parser.parse_args()
@@ -148,23 +147,20 @@ if __name__ == '__main__':
     test_data_path = 'data/' + args.dataset + '/test.txt'
 
     if args.hash_type[:2] == 'pg':
-        batch_size = train_bs * args.q
         method = 'PGHash'
         cr = args.cr
     elif args.hash_type[:3] == 'reg':
-        batch_size = train_bs
         method = 'Regular'
         cr = 1
     else:
-        batch_size = train_bs
         method = 'SLIDE'
         cr = 1
 
     with tf.device('/CPU:0'):
         # load (large) dataset
         print('Loading and partitioning data...')
-        train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, batch_size, test_bs,
-                                                                        train_data_path, test_data_path)
+        train_data, test_data, n_features, n_labels = load_extreme_data(rank, size, train_bs, test_bs, train_data_path,
+                                                                        test_data_path)
 
         # initialize meters
         top1 = AverageMeter()
