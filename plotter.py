@@ -73,7 +73,6 @@ def unpack_raw_test(directory_path, file_test='r0-test-acc-top1.log'):
     return np.array(test_acc), np.array(acc_iter)
 
 
-
 if __name__ == '__main__':
     colors = ['r', 'b', 'g', 'orange', 'pink', 'cyan', 'yellow', 'purple']
     ntest = 1
@@ -89,37 +88,40 @@ if __name__ == '__main__':
     stats = 'test-acc-top1.log'
     dataset = 'Delicious200K'
 
-    pgfolder = 'Output/PGResults/'
+    pgfolder = 'Output/PGHash/'
     fedavg_folder = 'Output/TrueResults/'
     folder = 'Output/ICML-Results/'
 
-    sw_labels = ['PGHash: 0.1CR', 'PGHash: 0.25CR', 'PGHash: 0.5CR']
-    sw_crs = [0.1, 0.25, 0.5]
+    sw_labels = ['PGHash: 0.1CR', 'PGHash: 0.25CR', 'PGHash: 0.5CR', 'Full PGHash']
+    sw_crs = [0.1, 0.25, 0.5, 1]
 
     mw_crs = [0.1, 0.1, 0.1]
     mw_workers = [1, 4, 8]
     mw_labels = ['PGHash: 0.1CR, 1 Table', 'PGHash: 0.1CR, 1 Table', 'PGHash: 0.1CR, 1 Table']
     mw_labelst = ['PGHash: 0.1CR, 10 Tables', 'PGHash: 0.1CR, 10 Tables', 'PGHash: 0.1CR, 10 Tables']
 
+    mw_crs = [1]
+    mw_workers = [1]
+    mw_labels = ['PGHash']
+
     multi_worker_test = True
 
     # Delicious Results
-
     for trial in range(1, ntest+1):
 
         if multi_worker_test:
             for j in range(len(mw_workers)):
 
                 plt.figure()
-                cr = 0.1
+                cr = mw_crs[j]
                 nw = mw_workers[j]
-                file = 'pghash-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr'
+                file = 'pg-pghash-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr'
 
-                test_acc_pg, iters_pg = unpack_raw_test(folder+file)
-                test_acc_pgt, iters_pgt = unpack_raw_test(folder + 'pg-table-' + file)
+                test_acc_pg, iters_pg = unpack_raw_test(pgfolder+file)
+                # test_acc_pgt, iters_pgt = unpack_raw_test(folder + 'pg-table-' + file)
 
                 plt.plot(iters_pg, test_acc_pg, label=mw_labels[j], color='r')
-                plt.plot(iters_pgt, test_acc_pgt, label=mw_labelst[j], color='g')
+                # plt.plot(iters_pgt, test_acc_pgt, label=mw_labelst[j], color='g')
 
                 # plot dense baseline
                 dense_file = 'dense-' + dataset + '-' + str(nw) + 'workers-' + '1.0cr'
@@ -139,10 +141,10 @@ if __name__ == '__main__':
                 plt.xlabel('Iterations', fontsize=15)
                 plt.xscale("log")
                 if j == 0:
-                    plt.xlim([1e2, 8e3])
+                    plt.xlim([1e2, 5e3])
                 else:
                     plt.xlim([1e2, 6.1e3])
-                plt.ylim([0.10, 0.48])
+                plt.ylim([0.15, 0.48])
                 plt.grid(which="both", alpha=0.25)
                 # plt.show()
                 savefilename = 'pg-multiworker' + str(nw) + '.pdf'
@@ -152,15 +154,15 @@ if __name__ == '__main__':
 
                 plt.figure()
                 cr = sw_crs[j]
-                file = 'pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr'
-                test_acc, iters = unpack_raw_test(folder + file)
+                file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr'
+                test_acc, iters = unpack_raw_test(pgfolder + file)
                 plt.plot(iters, test_acc, label=sw_labels[j], color='r')
-                plt.legend(loc='best')
+                plt.legend(loc='upper left')
                 plt.ylabel('Test Accuracy', fontsize=15)
                 plt.xlabel('Iterations', fontsize=15)
                 plt.xscale("log")
-                plt.xlim([1e2, 8e3])
-                plt.ylim([0.25, 0.48])
+                plt.xlim([1e2, 5e3])
+                plt.ylim([0.15, 0.48])
                 plt.grid(which="both", alpha=0.25)
                 # plt.show()
                 savefilename = 'pg-varycr' + str(cr) + '.pdf'
