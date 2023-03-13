@@ -13,12 +13,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
     test_acc = np.NaN
     comm_time = 0
     smartavg = True
-    '''
-    if args.cr == 1:
-        smartavg = False
-    else:
-        smartavg = True
-    '''
     num_labels = Method.nl
     num_features = Method.nf
     steps_per_rehash = args.steps_per_lsh
@@ -38,15 +32,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             # update full model
             Method.update_full_model(Method.model)
 
-            # REMOVE THIS FROM EPOCH TIME
-            '''
-            if isinstance(fake_n, np.ndarray):
-                # reset fake neuron weights that adam messed up
-                Method.final_dense[:, fake_n] = prev_full
-                # reset fake neuron biases that adam messed up BELOW
-                Method.full_model[Method.bias_start:][fake_n] = prev_bias
-            '''
-
             # compute LSH
             lsh_init = time.time()
             if (iterations-1) % steps_per_rehash == 0:
@@ -64,12 +49,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
 
             if size > 1:
                 # send indices to root (server)
-                # comm_time1 = Method.exchange_idx()
                 comm_time1 = Method.exchange_idx_vanilla(true_neurons_bool)
-
-            # REMOVE THIS FROM EPOCH TIME
-            # prev_full = np.copy(Method.final_dense[:, fake_n])
-            # prev_bias = np.copy(Method.full_model[Method.bias_start:][fake_n])
 
             # update model
             Method.update_model()
@@ -101,12 +81,9 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 init_time = time.time()
 
                 # communicate models amongst devices (if multiple devices are present)
-                # t = time.time()
                 if size > 1:
                     comm_time2 = Method.communicate(Method.model, active_neurons, smart=smartavg)
-                    # comm_time2 = 0
                     comm_time = comm_time1 + comm_time2
-                # print(time.time()-t)
 
                 # preprocess true label
                 y_true = tf.sparse.to_dense(y)
@@ -115,7 +92,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 nz = tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
                 y_true = y_true / nz
 
-                # '''
                 # TRY TO CREATE MASK FROM INDICES WITHOUT HAVING TO USE FORLOOP (SAVE 0.025 seconds)
                 mask = np.zeros((batch_size, num_labels))
                 for j in range(batch_size):
@@ -125,7 +101,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                 nonactive_mask = tf.where(active_mask == 0, 1., 0.)
                 softmax_mask = tf.where(active_mask == 1, 0., tf.float32.min)
 
-                # '''
                 # shorten the true label
                 y_true = tf.gather(y_true, indices=active_idx, axis=1)
 

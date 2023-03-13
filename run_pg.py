@@ -114,7 +114,6 @@ if __name__ == '__main__':
     parser.add_argument('--steps_per_test', type=int, default=100)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
-    parser.add_argument('--slide', type=int, default=0)
     parser.add_argument('--q', type=int, default=1)
 
     # parse the argument
