@@ -79,7 +79,7 @@ class Recorder(object):
         self.num_active_neurons = list()
         self.rank = rank
         self.saveFolderName = folderName + '/' + args.name + '-' + args.hash_type + '-' + args.dataset + '-' \
-                              + str(size) + 'workers-' + str(args.cr) + 'cr'
+                              + str(size) + 'workers-' + str(args.cr) + 'cr-' + str(args.num_tables) + 'tables'
         if rank == 0:
             if not os.path.isdir(self.saveFolderName):
                 os.mkdir(self.saveFolderName)

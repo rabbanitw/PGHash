@@ -106,7 +106,6 @@ class PGHash(ModelHub):
             for j in bs_range:
                 hc = base2_hash[j]
                 active_neurons = hash_dict[hc]
-                # local_active_counter[j][active_neurons] += 1
                 local_active_counter[j][active_neurons] = True
                 global_active_counter[active_neurons] = True
 

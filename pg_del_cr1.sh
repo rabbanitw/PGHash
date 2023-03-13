@@ -17,4 +17,4 @@ module load mpi
 module load cuda/11.4.4
 source ../../../../cmlscratch/marcob/environments/pghash/bin/activate
 
-mpirun -n 1 python run_pg.py --hash_type pghash --steps_per_test 100 --train_bs 128 --dataset Delicious200K --cr 1 --name pg --randomSeed 1203
+mpirun -n 1 python run_pg.py --hash_type pghash --steps_per_test 100 --train_bs 128 --dataset Delicious200K --cr 1 --name pg --randomSeed 1203 --num_tables 50
