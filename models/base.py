@@ -6,17 +6,14 @@ from mpi4py import MPI
 
 class ModelHub:
 
-    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, rank, size, q, influence,
-                 i1=0, i2=1):
+    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, cr, rank, size, influence, i1=0, i2=1):
 
         # initialize all parameters
         self.nl = num_labels
         self.nf = num_features
         self.hls = hidden_layer_size
         self.sdim = sdim
-        self.num_tables = num_tables
         self.cr = cr
-        self.q = q
         self.rank = rank
         self.size = size
         self.influence = influence
@@ -35,11 +32,32 @@ class ModelHub:
         self.unique_idx = None
         self.count = None
         self.big_model = None
+        self.full_size = np.arange(self.nl)
 
         # initialize the start of the compressed network weights and the total number of compressed labels
         self.num_c_layers = int(self.cr * self.nl)
         self.weight_idx = (self.nf * self.hls) + self.hls
 
+
+
+
+        self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
+        self.full_model = self.flatten_weights(self.model.get_weights())
+        if self.cr < 1:
+            # initialize compressed model
+            worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
+            self.model = SparseNeuralNetwork(worker_layer_dims)
+            self.layer_shapes, self.layer_sizes = self.get_model_architecture()
+
+        elif self.cr > 1:
+            print('ERROR: Compression Ratio is Greater Than 1 Which is Impossible!')
+            exit()
+        else:
+            self.layer_shapes, self.layer_sizes = self.get_model_architecture()
+            print('No Compression Being Used')
+
+
+        '''
         # initialize compressed model
         worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
         self.model = SparseNeuralNetwork(worker_layer_dims)
@@ -63,6 +81,7 @@ class ModelHub:
         else:
             print('No Compression Being Used')
             self.full_model = self.flatten_weights(self.model.get_weights())
+        '''
 
         # determine where the bias index starts
         self.bias_start = self.full_model.size - self.nl
@@ -75,6 +94,8 @@ class ModelHub:
         # get back to smaller size
         self.ci = np.sort(np.random.choice(self.nl, self.num_c_layers, replace=False))
         self.bias_idx = self.ci + self.bias_start
+
+        self.update_model()
 
     def get_model_architecture(self):
         model_weights = self.model.get_weights()

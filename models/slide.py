@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from lsh import slide, slide_hashtable
+from lsh import slide_hashtable
 from models.base import ModelHub
 from util.misc import compute_accuracy_lsh
 from util.mlp import SparseNeuralNetwork
@@ -10,11 +10,11 @@ class SLIDE(ModelHub):
 
     def __init__(self, num_labels, num_features, rank, size, influence, args):
 
-        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.num_tables, args.cr, rank,
-                         size, args.q, influence)
+        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, influence)
 
-        self.gaussian_mats = None
-        self.hash_dicts = []
+        self.num_tables = args.num_tables
+        self.gaussians = [[] for _ in range(self.num_tables)]
+        self.hash_dicts = [[] for _ in range(self.num_tables)]
 
         # initialize full model for the root device for testing accuracy
         if self.rank == 0:
@@ -31,119 +31,106 @@ class SLIDE(ModelHub):
             # set big model weights
             self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
 
-    def test_full_model(self, test_data, acc_meter):
+    def test_full_model(self, test_data, acc_meter, epoch_test=True):
         self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
         label_idx = np.arange(self.nl)
-        for (x_batch_test, y_batch_test) in test_data:
-            test_batch = x_batch_test.get_shape()[0]
-            y_pred_test = self.big_model(x_batch_test, training=False)
-            test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
-            acc_meter.update(test_acc1, test_batch)
+        if epoch_test:
+            for (x_batch_test, y_batch_test) in test_data:
+                y_pred_test = self.big_model(x_batch_test, training=False)
+                test_batch = x_batch_test.get_shape()[0]
+                test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
+                acc_meter.update(test_acc1, test_batch)
+        else:
+            test_data.shuffle(len(test_data))
+            sub_test_data = test_data.take(30)
+            for (x_batch_test, y_batch_test) in sub_test_data:
+                y_pred_test = self.big_model(x_batch_test, training=False)
+                test_batch = x_batch_test.get_shape()[0]
+                test_acc1 = compute_accuracy_lsh(y_pred_test, y_batch_test, label_idx, self.nl)
+                acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
 
-    def lsh_get_hash(self):
-
-        # get weights
-        self.get_final_dense()
-        n = self.final_dense.shape[0]
-
-        gaussian_mats = None
-
-        # determine all the hash tables and gaussian matrices
+    def rehash(self):
         for i in range(self.num_tables):
-            g_mat, ht_dict = slide_hashtable(self.final_dense, n, self.sdim)
+            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
+            self.gaussians[i] = gaussian
+            self.hash_dicts[i] = hash_dict
 
-            if i == 0:
-                gaussian_mats = g_mat
-            else:
-                gaussian_mats = np.vstack((gaussian_mats, g_mat))
-
-            self.hash_dicts.append(ht_dict)
-
-        self.gaussian_mats = gaussian_mats
-
-    def lsh(self, data, union=True, num_random_table=50):
+    def lsh_vanilla(self, model, data):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
-            inputs=self.model.inputs,
-            outputs=self.model.layers[2].output,  # this is the post relu
+            inputs=model.inputs,
+            outputs=model.layers[2].output,  # this is the post relu
         )
 
         in_layer = feature_extractor(data).numpy()
         bs = in_layer.shape[0]
-        cur_idx = [i for i in range(bs)]
+        bs_range = np.arange(bs)
+        local_active_counter = [np.zeros(self.nl, dtype=bool) for _ in range(bs)]
+        global_active_counter = np.zeros(self.nl, dtype=bool)
+        full_size = np.arange(self.nl)
+        prev_global = None
+        unique = 0
 
-        if union:
-            table_idx = np.random.choice(self.num_tables, num_random_table, replace=False)
-            for i in range(num_random_table):
-                idx = table_idx[i]
-                cur_gauss = self.gaussian_mats[(idx * self.sdim):((idx + 1) * self.sdim), :]
-                cur_ht_dict = self.hash_dicts[idx]
-                hash_idxs = slide(in_layer, cur_gauss, cur_ht_dict)
-                for j in range(bs):
-                    if i == 0:
-                        cur_idx[j] = hash_idxs[j]
-                    else:
-                        cur_idx[j] = np.union1d(cur_idx[j], hash_idxs[j])
+        for i in range(self.num_tables):
 
+            # create gaussian matrix
+            gaussian = self.gaussians[i]
+            hash_dict = self.hash_dicts[i]
+
+            # Apply PG to input vector.
+            transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
+
+            # convert  data to base 2 to remove repeats
+            base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
+
+            for j in bs_range:
+                hc = base2_hash[j]
+                active_neurons = hash_dict[hc]
+                # local_active_counter[j][active_neurons] += 1
+                local_active_counter[j][active_neurons] = True
+                global_active_counter[active_neurons] = True
+
+            unique = np.count_nonzero(global_active_counter)
+            if unique >= self.num_c_layers:
+                break
+            else:
+                prev_global = np.copy(global_active_counter)
+
+        # remove selected neurons (in a smart way)
+        gap = unique - self.num_c_layers
+        if gap > 0:
+            if prev_global is None:
+                p = global_active_counter / unique
+            else:
+                # remove most recent selected neurons if multiple tables are used
+                change = global_active_counter != prev_global
+                p = change / np.count_nonzero(change)
+
+            deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
+            global_active_counter[deactivate] = False
+
+            for k in bs_range:
+                # shave off deactivated neurons
+                local_active_counter[k] = local_active_counter[k] * global_active_counter
+                # select only active neurons for this sample
+                local_active_counter[k] = full_size[local_active_counter[k]]
+
+            self.ci = full_size[global_active_counter]
+            fake_neurons = []
+            true_neurons_bool = global_active_counter
         else:
-            prev_cur_idx = [i for i in range(bs)]
-            gap_idx = -np.ones(bs, dtype=np.int64)
+            remaining_neurons = full_size[np.logical_not(global_active_counter)]
+            true_neurons_bool = np.copy(global_active_counter)
+            fake_neurons = remaining_neurons[:-gap]
+            global_active_counter[fake_neurons] = True
+            self.ci = full_size[global_active_counter]
+            for k in bs_range:
+                # select only active neurons for this sample
+                local_active_counter[k] = full_size[local_active_counter[k]]
 
-            for i in range(self.num_tables):
-                cur_gauss = self.gaussian_mats[(i*self.sdim):((i+1)*self.sdim), :]
-                cur_ht_dict = self.hash_dicts[i]
-                hash_idxs = slide(in_layer, cur_gauss, cur_ht_dict)
-                for j in range(bs):
+        # update indices with new current index
+        self.bias_idx = self.ci + self.bias_start
 
-                    # if already filled, then skip
-                    if gap_idx[j] == 0:
-                        continue
-
-                    if i == 0:
-                        cur_idx[j] = hash_idxs[j]
-                    else:
-                        cur_idx[j] = np.intersect1d(cur_idx[j], hash_idxs[j])
-                    gap_idx[j] = int(self.num_c_layers - len(cur_idx[j]))
-
-                    # if we have not filled enough, then randomly select indices from the previous cur_idx to fill the gap
-                    if gap_idx[j] > 0:
-                        if i == 0:
-                            prev_dropped_idx = np.setdiff1d(np.arange(self.nl), cur_idx[j])
-                        else:
-                            prev_dropped_idx = np.setdiff1d(prev_cur_idx[j], cur_idx[j])
-                        cur_idx[j] = np.union1d(cur_idx[j], np.random.choice(prev_dropped_idx, gap_idx[j], replace=False))
-                        gap_idx[j] = 0
-                        continue
-
-                    prev_cur_idx[j] = cur_idx[j]
-
-                    # if X tables is not enough, take a random choice of the leftover (very unlikely)
-                    if i == self.num_tables - 1 and gap_idx[j] < 0:
-                        cur_idx[j] = np.random.choice(cur_idx[j], self.num_c_layers)
-
-                # if all(gap_idx == 0):
-                if all(gap_idx > 0):
-                    break
-
-        return cur_idx
-
-    def update(self, prev_weights, non_active_indices):
-        # update full model before averaging
-        w = prev_weights[-2]
-        b = prev_weights[-1]
-        self.get_final_dense()
-        self.final_dense[:, non_active_indices] = w[:, non_active_indices]
-        self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
-        self.full_model[non_active_indices + self.bias_start] = b[non_active_indices]
-
-        # update the first part of the model as well!
-        # partial_model = self.flatten_weights(prev_weights[:-2])
-        # self.full_model[:self.weight_idx] = partial_model
-
-        # set new weights
-        new_weights = self.unflatten_weights(self.full_model)
-        self.model.set_weights(new_weights)
-
-        return self.model
+        return self.ci, local_active_counter, true_neurons_bool, fake_neurons

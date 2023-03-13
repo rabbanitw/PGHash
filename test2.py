@@ -4,6 +4,31 @@ import tensorflow as tf
 from itertools import product
 
 if __name__ == '__main__':
+
+
+    t4 = tf.constant([[0, 5],
+                      [1, 6],
+                      [2, 7],
+                      [3, 8],
+                      [4, 9]])
+
+    update = tf.zeros([3, 2], dtype=tf.int32)
+
+    print(t4.shape)
+
+    print(tf.tensor_scatter_nd_update(t4, indices=[[2], [3], [0]], updates=update, name=None))
+
+    print(tf.gather_nd(t4,
+                       indices=[[2], [3], [0]]))
+
+    t = tf.random.uniform(shape=[10])
+
+    u = tf.zeros([3], dtype=tf.float32)
+
+    print(tf.tensor_scatter_nd_update(t, indices=[[2], [3], [0]], updates=u, name=None))
+
+
+    '''
     x = [i for i in product(range(2), repeat=11)]
     x = np.array(x).T
     base2_hash = x.T.dot(1 << np.arange(x.T.shape[-1]))
@@ -18,6 +43,7 @@ if __name__ == '__main__':
         outer_dict[base2_hash[hash_num]] = inner_dict
 
     print(outer_dict[3][2])
+    '''
 
 
 
