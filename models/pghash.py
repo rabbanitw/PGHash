@@ -89,7 +89,6 @@ class PGHash(ModelHub):
         unique = 0
 
         for i in range(self.num_tables):
-
             # create gaussian matrix
             if not sparse_rehash:
                 gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
@@ -102,13 +101,11 @@ class PGHash(ModelHub):
 
             # convert  data to base 2 to remove repeats
             base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-
             for j in bs_range:
                 hc = base2_hash[j]
                 active_neurons = hash_dict[hc]
                 local_active_counter[j][active_neurons] = True
                 global_active_counter[active_neurons] = True
-
             unique = np.count_nonzero(global_active_counter)
             if unique >= self.num_c_layers:
                 break

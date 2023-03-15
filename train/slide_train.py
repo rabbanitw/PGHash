@@ -32,6 +32,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                 Method.rehash()
             active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla(Method.model, x)
             lsh_time = time.time() - lsh_init
+            print(lsh_time)
 
             # update model
             Method.update_model()

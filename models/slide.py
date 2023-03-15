@@ -72,7 +72,6 @@ class SLIDE(ModelHub):
         full_size = np.arange(self.nl)
         prev_global = None
         unique = 0
-
         for i in range(self.num_tables):
 
             # create gaussian matrix
@@ -88,7 +87,6 @@ class SLIDE(ModelHub):
             for j in bs_range:
                 hc = base2_hash[j]
                 active_neurons = hash_dict[hc]
-                # local_active_counter[j][active_neurons] += 1
                 local_active_counter[j][active_neurons] = True
                 global_active_counter[active_neurons] = True
 
@@ -97,7 +95,6 @@ class SLIDE(ModelHub):
                 break
             else:
                 prev_global = np.copy(global_active_counter)
-
         # remove selected neurons (in a smart way)
         gap = unique - self.num_c_layers
         if gap > 0:
@@ -126,9 +123,11 @@ class SLIDE(ModelHub):
             fake_neurons = remaining_neurons[:-gap]
             global_active_counter[fake_neurons] = True
             self.ci = full_size[global_active_counter]
+            #t = time.time()
             for k in bs_range:
                 # select only active neurons for this sample
                 local_active_counter[k] = full_size[local_active_counter[k]]
+            #print(time.time()-t)
 
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
