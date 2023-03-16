@@ -46,7 +46,7 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
 
             # communicate models amongst devices (if multiple devices are present)
             if size > 1:
-                model, comm_time = Method.communicate(model, smart=False)
+                model, comm_time = Method.communicate(model)
 
             # transform sparse label to dense sub-label
             batch = x_batch_train.get_shape()[0]
