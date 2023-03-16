@@ -32,7 +32,9 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
             # compute test accuracy every X steps
             if iterations % args.steps_per_test == 0:
                 if rank == 0:
-                    for (x_batch_test, y_batch_test) in test_data:
+                    test_data.shuffle(len(test_data))
+                    sub_test_data = test_data.take(30)
+                    for (x_batch_test, y_batch_test) in sub_test_data:
                         y_pred_test = model(x_batch_test, training=False)
                         test_acc1.update_state(y_pred_test, tf.sparse.to_dense(y_batch_test))
                         test_acc = test_acc1.result().numpy()
@@ -88,6 +90,13 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
 
             iterations += 1
 
+        for (x_batch_test, y_batch_test) in test_data:
+            y_pred_test = model(x_batch_test, training=False)
+            test_acc1.update_state(y_pred_test, tf.sparse.to_dense(y_batch_test))
+            test_acc = test_acc1.result().numpy()
+        print("Epoch %d: Top 1 Test Accuracy %.4f" % (epoch, test_acc))
+        recorder.add_testacc(test_acc)
         # reset accuracy statistics for next epoch
         top1.reset()
         losses.reset()
+        test_acc1.reset_state()
