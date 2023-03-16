@@ -10,7 +10,8 @@ class SLIDE(ModelHub):
 
     def __init__(self, num_labels, num_features, rank, size, influence, args):
 
-        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, influence)
+        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.c, args.cr, rank, size,
+                         influence)
 
         self.num_tables = args.num_tables
         self.gaussians = [[] for _ in range(self.num_tables)]
@@ -52,7 +53,7 @@ class SLIDE(ModelHub):
 
     def rehash(self):
         for i in range(self.num_tables):
-            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.sdim)
+            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.c)
             self.gaussians[i] = gaussian
             self.hash_dicts[i] = hash_dict
 

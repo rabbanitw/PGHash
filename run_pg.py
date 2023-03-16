@@ -105,6 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('--hash_type', type=str, default='pghash')
     parser.add_argument('--randomSeed', type=int, default=1203)
     parser.add_argument('--sdim', type=int, default=8)
+    parser.add_argument('--c', type=int, default=8)
     parser.add_argument('--num_tables', type=int, default=50)
     parser.add_argument('--lr', type=int, default=1e-4)
     parser.add_argument('--cr', type=float, default=0.2)

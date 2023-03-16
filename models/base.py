@@ -6,13 +6,14 @@ from mpi4py import MPI
 
 class ModelHub:
 
-    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, cr, rank, size, influence, i1=0, i2=1):
+    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, c, cr, rank, size, influence, i1=0, i2=1):
 
         # initialize all parameters
         self.nl = num_labels
         self.nf = num_features
         self.hls = hidden_layer_size
         self.sdim = sdim
+        self.c = c
         self.cr = cr
         self.rank = rank
         self.size = size
