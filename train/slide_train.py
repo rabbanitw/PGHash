@@ -38,11 +38,12 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
 
             # compute test accuracy every X steps
             if iterations % args.steps_per_test == 0:
-                Method.update_full_model(Method.model)
-                test_acc = Method.test_full_model(test_data, test_top1, epoch_test=False)
-                print("Step %d: Top 1 Test Accuracy %.4f" % (iterations - 1, test_acc))
-                recorder.add_testacc(test_acc)
-                test_top1.reset()
+                if rank == 0:
+                    Method.update_full_model(Method.model)
+                    test_acc = Method.test_full_model(test_data, test_top1, epoch_test=False)
+                    print("Step %d: Top 1 Test Accuracy %.4f" % (iterations - 1, test_acc))
+                    recorder.add_testacc(test_acc)
+                    test_top1.reset()
 
             # compute batch size
             batch_size = x.get_shape()[0]
@@ -111,11 +112,12 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             iterations += 1
 
         # compute end of epoch testing
-        Method.update_full_model(Method.model)
-        test_acc = Method.test_full_model(test_data, test_top1, epoch_test=True)
-        print("Epoch %d: Top 1 Test Accuracy %.4f" % (epoch, test_acc))
-        recorder.add_testacc(test_acc)
-        test_top1.reset()
+        if rank == 0:
+            Method.update_full_model(Method.model)
+            test_acc = Method.test_full_model(test_data, test_top1, epoch_test=True)
+            print("Epoch %d: Top 1 Test Accuracy %.4f" % (epoch, test_acc))
+            recorder.add_testacc(test_acc)
+            test_top1.reset()
 
         # reset accuracy statistics for next epoch
         top1.reset()
