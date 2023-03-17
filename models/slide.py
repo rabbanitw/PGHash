@@ -4,6 +4,8 @@ from lsh import slide_hashtable
 from models.base import ModelHub
 from util.misc import compute_accuracy_lsh
 from util.mlp import SparseNeuralNetwork
+import time
+from mpi4py import MPI
 
 
 class SLIDE(ModelHub):
@@ -134,3 +136,85 @@ class SLIDE(ModelHub):
         self.bias_idx = self.ci + self.bias_start
 
         return self.ci, local_active_counter, true_neurons_bool, fake_neurons
+
+    def exchange_idx_vanilla(self, bool_idx):
+        t = time.time()
+        dev_bools = np.empty((self.size, self.nl), dtype=np.bool_)
+        MPI.COMM_WORLD.Allgather(bool_idx, dev_bools)
+        count = np.sum(dev_bools, axis=0)
+        self.count = count[count > 0]
+        total_active = np.zeros(self.nl, dtype=bool)
+        self.device_idxs = []
+        for dev in range(self.size):
+            dev_bool = dev_bools[dev, :]
+            total_active += dev_bool
+            self.device_idxs.append(self.full_size[dev_bool])
+        self.unique = self.full_size[total_active]
+        self.unique_len = len(self.unique)
+        self.unique_idx = np.empty(self.nl, dtype=np.int64)
+        self.unique_idx[self.unique] = np.arange(self.unique_len)
+        return time.time()-t
+
+    def smart_average_vanilla(self, model, ci):
+
+        # update the model
+        self.update_full_model(model)
+        comm_time = 0
+
+        # create receiving buffer for first dense layer
+        recv_first_layer = np.empty_like(self.full_model[:self.weight_idx])
+        # Allreduce first layer of the network
+        MPI.COMM_WORLD.Barrier()
+        t = time.time()
+        MPI.COMM_WORLD.Allreduce(self.influence * self.full_model[:self.weight_idx], recv_first_layer, op=MPI.SUM)
+        comm_time += (time.time() - t)
+        # update first layer
+        self.full_model[:self.weight_idx] = recv_first_layer
+
+        # prepare the layers and biases to send
+        send_final_layer = self.final_dense[:, ci]
+        send_final_bias = self.full_model[self.bias_start + ci]
+
+        updated_final_layer = np.zeros((self.hls, self.unique_len))
+        updated_final_bias = np.zeros(self.unique_len)
+        updated_final_layer[:, self.unique_idx[self.device_idxs[self.rank]]] += send_final_layer
+        updated_final_bias[self.unique_idx[self.device_idxs[self.rank]]] += send_final_bias
+
+        send_buf = np.concatenate((updated_final_layer.flatten(), updated_final_bias))
+        recv_buf = np.empty((self.hls+1) * self.unique_len)
+        t = time.time()
+        MPI.COMM_WORLD.Allreduce(send_buf, recv_buf, op=MPI.SUM)
+        comm_time += (time.time() - t)
+
+        updated_final_layer = recv_buf[:-self.unique_len].reshape(self.hls, self.unique_len) / self.count
+        updated_final_bias = recv_buf[-self.unique_len:] / self.count
+
+        # update the full model
+        # set biases
+        self.full_model[self.bias_start + self.unique] = updated_final_bias
+        # set weights
+        self.final_dense[:, self.unique] = updated_final_layer
+        self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
+
+        # update the sub-architecture
+        self.update_model()
+
+        return comm_time
+
+    def communicate(self, model, ci):
+
+        # have to have this here because of the case that i1 = 0 (cant do 0 % 0)
+        self.iter += 1
+        comm_time = 0
+        # I1: Number of Local Updates Communication Set
+        if self.iter % (self.i1 + 1) == 0:
+            self.comm_iter += 1
+            t = self.smart_average_vanilla(model, ci)
+            comm_time += t
+            # I2: Number of Consecutive 1-Step Averaging
+            if self.comm_iter % self.i2 == 0:
+                self.comm_iter = 0
+            else:
+                # decrease iteration by one in order to run another one update and average step (I2 communication)
+                self.iter -= 1
+        return comm_time

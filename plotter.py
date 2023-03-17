@@ -89,20 +89,24 @@ if __name__ == '__main__':
     dataset = 'Delicious200K'
 
     pgfolder = 'Output/PGHash/'
+    slidefolder = 'Output/SLIDE/'
     fedavg_folder = 'Output/TrueResults/'
     folder = 'Output/ICML-Results/'
 
-    sw_labels = ['PGHash: 0.1CR', 'PGHash: 0.25CR', 'PGHash: 0.5CR', 'Full PGHash']
-    sw_crs = [0.1, 0.25, 0.5, 1]
+    sw_labels = ['PGHash: 0.1CR, 50 Tables', 'PGHash: 0.25CR, 50 Tables', 'PGHash: 0.5CR, 50 Tables',
+                 'Full PGHash, 50 Tables']
+    sw_crs = [0.1, 0.25, 0.5, 1.0]
+    vary_tables = [50]
 
     mw_crs = [0.1, 0.1, 0.1]
     mw_workers = [1, 4, 8]
     mw_labels = ['PGHash: 0.1CR, 1 Table', 'PGHash: 0.1CR, 1 Table', 'PGHash: 0.1CR, 1 Table']
     mw_labelst = ['PGHash: 0.1CR, 10 Tables', 'PGHash: 0.1CR, 10 Tables', 'PGHash: 0.1CR, 10 Tables']
 
-    mw_crs = [1]
+    mw_crs = [1.0]
     mw_workers = [1]
     mw_labels = ['PGHash']
+    slide_labels = ['SLIDE']
 
     multi_worker_test = True
 
@@ -114,14 +118,21 @@ if __name__ == '__main__':
 
                 plt.figure()
                 cr = mw_crs[j]
+                tables = vary_tables[0]
                 nw = mw_workers[j]
-                file = 'pg-pghash-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr'
+                file = 'pg-pghash-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr-' + str(tables) + 'tables'
 
                 test_acc_pg, iters_pg = unpack_raw_test(pgfolder+file)
                 # test_acc_pgt, iters_pgt = unpack_raw_test(folder + 'pg-table-' + file)
 
                 plt.plot(iters_pg, test_acc_pg, label=mw_labels[j], color='r')
                 # plt.plot(iters_pgt, test_acc_pgt, label=mw_labelst[j], color='g')
+
+                # plot slide baseline
+                slide_file = 'slide-slide-' + dataset + '-' + str(nw) + 'workers-' + '1.0cr'
+                slide_filepath = slidefolder + slide_file
+                test_acc_slide, iters_slide = unpack_raw_test(slide_filepath)
+                plt.plot(iters_slide, test_acc_slide, label=slide_labels[j], color='g')
 
                 # plot dense baseline
                 dense_file = 'dense-' + dataset + '-' + str(nw) + 'workers-' + '1.0cr'
@@ -153,8 +164,9 @@ if __name__ == '__main__':
             for j in range(len(sw_crs)):
 
                 plt.figure()
+                tables = vary_tables[0]
                 cr = sw_crs[j]
-                file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr'
+                file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr-' + str(tables) + 'tables'
                 test_acc, iters = unpack_raw_test(pgfolder + file)
                 plt.plot(iters, test_acc, label=sw_labels[j], color='r')
                 plt.legend(loc='upper left')
@@ -162,7 +174,7 @@ if __name__ == '__main__':
                 plt.xlabel('Iterations', fontsize=15)
                 plt.xscale("log")
                 plt.xlim([1e2, 5e3])
-                plt.ylim([0.15, 0.48])
+                plt.ylim([0.25, 0.48])
                 plt.grid(which="both", alpha=0.25)
                 # plt.show()
                 savefilename = 'pg-varycr' + str(cr) + '.pdf'

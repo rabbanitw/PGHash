@@ -33,6 +33,10 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla(Method.model, x)
             lsh_time = time.time() - lsh_init
 
+            # send indices to root (server)
+            if Method.size > 1:
+                comm_time1 = Method.exchange_idx_vanilla(true_neurons_bool)
+
             # update model
             Method.update_model()
 
@@ -44,6 +48,12 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                     print("Step %d: Top 1 Test Accuracy %.4f" % (iterations - 1, test_acc))
                     recorder.add_testacc(test_acc)
                     test_top1.reset()
+
+            # communicate models amongst devices (if multiple devices are present)
+            if Method.size > 1:
+                active_neurons = Method.full_size[true_neurons_bool]
+                comm_time2 = Method.communicate(Method.model, active_neurons)
+                comm_time = comm_time1 + comm_time2
 
             # compute batch size
             batch_size = x.get_shape()[0]
