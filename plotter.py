@@ -108,7 +108,15 @@ if __name__ == '__main__':
     mw_labels = ['PGHash']
     slide_labels = ['SLIDE']
 
-    multi_worker_test = True
+    mt_crs = [0.1, 0.25, 0.5, 1.0]
+    mt_workers = [1]
+    mt_tables = [5, 10, 50]
+    mt_labels = ['PGHash: 5 Tables, ', 'PGHash: 10 Tables, ', 'PGHash: 50 Tables, ']
+    mt_colors = ['r', 'g', 'b']
+
+    multi_worker_test = False
+    multi_cr = False
+    multi_table = True
 
     # Delicious Results
     for trial in range(1, ntest+1):
@@ -160,7 +168,7 @@ if __name__ == '__main__':
                 # plt.show()
                 savefilename = 'pg-multiworker' + str(nw) + '.pdf'
                 plt.savefig(savefilename, format="pdf")
-        else:
+        elif multi_cr:
             for j in range(len(sw_crs)):
 
                 plt.figure()
@@ -178,6 +186,28 @@ if __name__ == '__main__':
                 plt.grid(which="both", alpha=0.25)
                 # plt.show()
                 savefilename = 'pg-varycr' + str(cr) + '.pdf'
+                plt.savefig(savefilename, format="pdf")
+
+        elif multi_table:
+            for j in range(len(mt_crs)):
+                cr = mt_crs[j]
+                plt.figure()
+                for k in range(len(mt_tables)):
+                    tables = mt_tables[k]
+                    color = mt_colors[k]
+                    label = mt_labels[k] + str(cr) + 'CR'
+                    file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr-' + str(tables) + 'tables'
+                    test_acc, iters = unpack_raw_test(pgfolder + file)
+                    plt.plot(iters, test_acc, label=label, color=str(color))
+                plt.legend(loc='upper left')
+                plt.ylabel('Test Accuracy', fontsize=15)
+                plt.xlabel('Iterations', fontsize=15)
+                plt.xscale("log")
+                plt.xlim([1e2, 5e3])
+                plt.ylim([0.2, 0.48])
+                plt.grid(which="both", alpha=0.25)
+                # plt.show()
+                savefilename = 'pg-vary-tables' + str(cr) + '.pdf'
                 plt.savefig(savefilename, format="pdf")
 
 

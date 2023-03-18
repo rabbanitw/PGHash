@@ -5,7 +5,7 @@ from models.base import ModelHub
 from util.mlp import SparseNeuralNetwork
 from util.misc import compute_accuracy_lsh
 import time
-from lsh import pg_hashtable
+from lsh import pg_hashtable, wta
 
 
 def get_unique_N(iterable, N):
@@ -72,7 +72,7 @@ class PGHash(ModelHub):
             self.gaussians[i] = gaussian
             self.hash_dicts[i] = hash_dict
 
-    def lsh_vanilla(self, model, data, sparse_rehash=True):
+    def lsh_vanilla(self, model, data):
 
         # get input layer for LSH
         feature_extractor = tf.keras.Model(
@@ -90,12 +90,9 @@ class PGHash(ModelHub):
         unique = 0
 
         for i in range(self.num_tables):
-            # create gaussian matrix
-            if not sparse_rehash:
-                gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
-            else:
-                gaussian = self.gaussians[i]
-                hash_dict = self.hash_dicts[i]
+            # load gaussian matrix
+            gaussian = self.gaussians[i]
+            hash_dict = self.hash_dicts[i]
 
             # Apply PG to input vector.
             transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
@@ -149,6 +146,89 @@ class PGHash(ModelHub):
         self.bias_idx = self.ci + self.bias_start
 
         return self.ci, local_active_counter, true_neurons_bool, fake_neurons
+
+    # ===============================
+    def rehash_wta(self):
+        B = np.tile(np.eye(self.sdim), (1, int(np.ceil(self.hls/self.sdim))))[:, :self.hls]
+        BW = B @ self.final_dense
+        for i in range(self.num_tables):
+            gaussian, hash_dict = wta(BW,  self.c)
+            self.gaussians[i] = gaussian
+            self.hash_dicts[i] = hash_dict
+
+    def lsh_vanilla_wta(self, model, data):
+
+        # get input layer for LSH
+        feature_extractor = tf.keras.Model(
+            inputs=model.inputs,
+            outputs=model.layers[2].output,  # this is the post relu
+        )
+
+        in_layer = feature_extractor(data).numpy()
+        bs = in_layer.shape[0]
+        bs_range = np.arange(bs)
+        local_active_counter = [np.zeros(self.nl, dtype=bool) for _ in range(bs)]
+        global_active_counter = np.zeros(self.nl, dtype=bool)
+        full_size = np.arange(self.nl)
+        prev_global = None
+        unique = 0
+        for i in range(self.num_tables):
+
+            # create gaussian matrix
+            gaussian = self.gaussians[i]
+            hash_dict = self.hash_dicts[i]
+
+            # Apply WTA to input vector.
+            base2_hash = np.argmax(in_layer.T[gaussian, :], axis=0)
+
+            for j in bs_range:
+                hc = base2_hash[j]
+                active_neurons = hash_dict[hc]
+                local_active_counter[j][active_neurons] = True
+                global_active_counter[active_neurons] = True
+
+            unique = np.count_nonzero(global_active_counter)
+            if unique >= self.num_c_layers:
+                break
+            else:
+                prev_global = np.copy(global_active_counter)
+        # remove selected neurons (in a smart way)
+        gap = unique - self.num_c_layers
+        if gap > 0:
+            if prev_global is None:
+                p = global_active_counter / unique
+            else:
+                # remove most recent selected neurons if multiple tables are used
+                change = global_active_counter != prev_global
+                p = change / np.count_nonzero(change)
+
+            deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
+            global_active_counter[deactivate] = False
+
+            for k in bs_range:
+                # shave off deactivated neurons
+                local_active_counter[k] = local_active_counter[k] * global_active_counter
+                # select only active neurons for this sample
+                local_active_counter[k] = full_size[local_active_counter[k]]
+
+            self.ci = full_size[global_active_counter]
+            fake_neurons = []
+            true_neurons_bool = global_active_counter
+        else:
+            remaining_neurons = full_size[np.logical_not(global_active_counter)]
+            true_neurons_bool = np.copy(global_active_counter)
+            fake_neurons = remaining_neurons[:-gap]
+            global_active_counter[fake_neurons] = True
+            self.ci = full_size[global_active_counter]
+            for k in bs_range:
+                # select only active neurons for this sample
+                local_active_counter[k] = full_size[local_active_counter[k]]
+
+        # update indices with new current index
+        self.bias_idx = self.ci + self.bias_start
+
+        return self.ci, local_active_counter, true_neurons_bool, fake_neurons
+    # ===============================
 
     def exchange_idx_vanilla(self, bool_idx):
         t = time.time()

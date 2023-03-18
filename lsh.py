@@ -66,3 +66,17 @@ def slide_hashtable(weights, n, c):
         hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
 
     return slide_gaussian, hash_dict
+
+
+def wta(weights, c):
+    permutation = np.random.choice(weights.shape[0], c, replace=False)
+    hash_code = np.argmax(weights[permutation, :], axis=0)
+    # create dictionary holding the base 2 hash code (key) and the weights which share that hash code (value)
+    hash_dict = defaultdict(list)
+    for k, v in zip(hash_code, np.arange(len(hash_code))):
+        hash_dict[k].append(v)
+    # make the dictionary contain numpy arrays and not a list (for faster slicing)
+    for key in hash_dict:
+        hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
+    return permutation, hash_dict
+

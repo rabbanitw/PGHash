@@ -31,12 +31,11 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             # compute LSH
             lsh_init = time.time()
             if (iterations-1) % steps_per_rehash == 0:
-                Method.rehash()
+                # Method.rehash()
+                Method.rehash_wta()
 
-            active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla(Method.model, x,
-                                                                                          sparse_rehash=True)
-            # active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_hamming(Method.model, x_batch_train)
-            # active_idx, sample_active_idx = Method.lsh_hamming_opt(Method.model, x_batch_train)
+            # active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla(Method.model, x)
+            active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla_wta(Method.model, x)
             lsh_time = time.time() - lsh_init
 
             # document total number of active neurons across the batch

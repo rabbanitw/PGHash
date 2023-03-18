@@ -29,8 +29,10 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             # compute LSH
             lsh_init = time.time()
             if (iterations - 1) % steps_per_rehash == 0:
-                Method.rehash()
-            active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla(Method.model, x)
+                # Method.rehash()
+                Method.rehash_wta()
+            # active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla(Method.model, x)
+            active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla_wta(Method.model, x)
             lsh_time = time.time() - lsh_init
 
             # send indices to root (server)
