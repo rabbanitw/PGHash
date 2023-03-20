@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from lsh import slide_hashtable, wta
+from lsh import slide_hashtable, wta, dwta
 from models.base import ModelHub
 from util.misc import compute_accuracy_lsh
 from util.mlp import SparseNeuralNetwork
@@ -138,12 +138,17 @@ class SLIDE(ModelHub):
         return self.ci, local_active_counter, true_neurons_bool, fake_neurons
 
     # ======================================
-
-    def rehash_wta(self):
-        for i in range(self.num_tables):
-            gaussian, hash_dict = wta(self.final_dense,  self.c)
-            self.gaussians[i] = gaussian
-            self.hash_dicts[i] = hash_dict
+    def rehash_wta(self, run_dwta=True):
+        if run_dwta:
+            for i in range(self.num_tables):
+                gaussian, hash_dict = dwta(self.final_dense,  self.c)
+                self.gaussians[i] = gaussian
+                self.hash_dicts[i] = hash_dict
+        else:
+            for i in range(self.num_tables):
+                gaussian, hash_dict = wta(self.final_dense,  self.c)
+                self.gaussians[i] = gaussian
+                self.hash_dicts[i] = hash_dict
 
     def lsh_vanilla_wta(self, model, data):
 

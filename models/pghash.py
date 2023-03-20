@@ -5,7 +5,7 @@ from models.base import ModelHub
 from util.mlp import SparseNeuralNetwork
 from util.misc import compute_accuracy_lsh
 import time
-from lsh import pg_hashtable, wta
+from lsh import pg_hashtable, wta, dwta
 
 
 def get_unique_N(iterable, N):
@@ -148,13 +148,19 @@ class PGHash(ModelHub):
         return self.ci, local_active_counter, true_neurons_bool, fake_neurons
 
     # ===============================
-    def rehash_wta(self):
+    def rehash_wta(self, run_dwta=True):
         B = np.tile(np.eye(self.sdim), (1, int(np.ceil(self.hls/self.sdim))))[:, :self.hls]
         BW = B @ self.final_dense
-        for i in range(self.num_tables):
-            gaussian, hash_dict = wta(BW,  self.c)
-            self.gaussians[i] = gaussian
-            self.hash_dicts[i] = hash_dict
+        if run_dwta:
+            for i in range(self.num_tables):
+                gaussian, hash_dict = dwta(BW,  self.c)
+                self.gaussians[i] = gaussian
+                self.hash_dicts[i] = hash_dict
+        else:
+            for i in range(self.num_tables):
+                gaussian, hash_dict = wta(BW,  self.c)
+                self.gaussians[i] = gaussian
+                self.hash_dicts[i] = hash_dict
 
     def lsh_vanilla_wta(self, model, data):
 
