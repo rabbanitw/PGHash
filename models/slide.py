@@ -173,10 +173,25 @@ class SLIDE(ModelHub):
             hash_dict = self.hash_dicts[i]
 
             # Apply WTA to input vector.
-            base2_hash = np.argmax(in_layer.T[gaussian, :], axis=0)
+            selected_weights = in_layer.T[gaussian, :]
+            empty_bins = np.count_nonzero(selected_weights, axis=0) == 0
+            hash_code = np.argmax(selected_weights, axis=0)
+            # if empty bins exist, run DWTA
+            if np.any(empty_bins):
+                # perform DWTA
+                hash_code[empty_bins] = -1
+                constant = np.zeros_like(hash_code)
+                i = 1
+                while np.any(empty_bins):
+                    empty_bins_roll = np.roll(empty_bins, i)
+                    hash_code[empty_bins] = hash_code[empty_bins_roll]
+                    constant[empty_bins] += 2 * self.c
+                    empty_bins = (hash_code == -1)
+                    i += 1
+                hash_code += constant
 
             for j in bs_range:
-                hc = base2_hash[j]
+                hc = hash_code[j]
                 active_neurons = hash_dict[hc]
                 local_active_counter[j][active_neurons] = True
                 global_active_counter[active_neurons] = True

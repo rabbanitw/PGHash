@@ -93,7 +93,7 @@ def dwta(weights, c):
         constant = np.zeros_like(hash_code)
         i = 1
         while np.any(empty_bins):
-            empty_bins_roll = np.roll(empty_bins, i, axis=0)
+            empty_bins_roll = np.roll(empty_bins, i)
             hash_code[empty_bins] = hash_code[empty_bins_roll]
             constant[empty_bins] += 2*c
             empty_bins = (hash_code == -1)
