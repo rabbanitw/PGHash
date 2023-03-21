@@ -153,6 +153,9 @@ if __name__ == '__main__':
     elif args.hash_type[:3] == 'reg':
         method = 'Regular'
         cr = 1
+    elif args.hash_type[:5] == 'dense':
+        method = 'Regular'
+        cr = 1
     else:
         method = 'SLIDE'
         cr = 1

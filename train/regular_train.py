@@ -55,10 +55,28 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
             nz = tf.math.count_nonzero(y_true, axis=1, dtype=tf.dtypes.float32, keepdims=True)
             y_true = y_true / nz
 
+            #'''
             # perform gradient update
             with tf.GradientTape() as tape:
                 y_pred = model(x_batch_train)
                 loss_value = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+            #'''
+
+            '''
+            active_mask = tf.ones([batch, Method.nl], tf.float32)
+            nonactive_mask = tf.where(active_mask == 0, 1., 0.)
+            softmax_mask = tf.where(active_mask == 1, 0., tf.float32.min)
+            # perform gradient update
+            with tf.GradientTape() as tape:
+                y_pred = Method.model(x_batch_train)
+                y_pred = tf.math.add(y_pred, softmax_mask)
+                log_sm = tf.nn.log_softmax(y_pred, axis=1)
+                # zero out non-active neurons for each sample
+                log_sm = tf.math.multiply(log_sm, active_mask)
+                smce = tf.math.multiply(log_sm, y_true)
+                smce = tf.stop_gradient(nonactive_mask * smce) + active_mask * smce
+                loss_value = -tf.reduce_mean(tf.reduce_sum(smce, axis=1, keepdims=True))
+            '''
 
             # apply backpropagation after setting non-active weights to zero
             grads = tape.gradient(loss_value, model.trainable_weights)
