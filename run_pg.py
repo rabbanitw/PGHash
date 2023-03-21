@@ -171,7 +171,8 @@ if __name__ == '__main__':
 
         # initialize model
         # optimizer = Adam(learning_rate=args.lr)
-        optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, epsilon=1e-8)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+        # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, epsilon=1e-8)
         print('Initializing model...')
         if method == 'PGHash':
             Method = PGHash(n_labels, n_features, rank, size, 1 / size, args)
