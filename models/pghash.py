@@ -162,7 +162,6 @@ class PGHash(ModelHub):
                 gaussian, hash_dict = wta(BW,  self.c)
                 self.gaussians[i] = gaussian
                 self.hash_dicts[i] = hash_dict
-    '''
 
     def rehash_wta(self):
         codes_per_weight = int(self.hls/self.c)
@@ -182,6 +181,17 @@ class PGHash(ModelHub):
                 j = 1
             else:
                 j += 1
+    '''
+
+    def rehash_wta(self):
+        potential_indices = np.arange(self.hls)
+        for i in range(self.num_tables):
+            indices = np.random.choice(potential_indices, self.sdim, replace=False)
+            perm = np.random.choice(indices, self.c, replace=False)
+            perm_weight = self.final_dense[perm, :]
+            hash_dict = pg_dwta(perm_weight, self.c)
+            self.gaussians[i] = perm
+            self.hash_dicts[i] = hash_dict
 
     def lsh_vanilla_wta(self, model, data):
 
