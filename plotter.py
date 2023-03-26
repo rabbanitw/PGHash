@@ -87,26 +87,26 @@ if __name__ == '__main__':
     # specify which statistics to graph on the y-axis (will make separate plots)
     stats = 'test-acc-top1.log'
     dataset = 'Delicious200K'
+    dataset = 'Amazon670K'
 
-    pgfolder = 'Output/PGHash/'
-    slidefolder = 'Output/SLIDE/'
-    fedavg_folder = 'Output/TrueResults/'
-    folder = 'Output/ICML-Results/'
+    pg_folder = 'Output/Results/PGHash/'
+    slide_folder = 'Output/Results/Slide/'
+    dense_folder = 'Output/Results/Dense/'
 
-    sw_labels = ['PGHash: 0.1CR, 50 Tables', 'PGHash: 0.25CR, 50 Tables', 'PGHash: 0.5CR, 50 Tables',
-                 'Full PGHash, 50 Tables']
+    sw_labels = ['PGHash: 0.1CR', 'PGHash: 0.25CR', 'PGHash: 0.5CR', 'Full PGHash']
+    sw_labels_dense = ['Dense Baseline', 'Dense Baseline', 'Dense Baseline', 'Dense Baseline']
     sw_crs = [0.1, 0.25, 0.5, 1.0]
-    vary_tables = [50]
+    sw_crs_dense = [1.0, 1.0, 1.0, 1.0]
+    # sw_tables = [200, 200, 200, 200]
+    sw_tables = [50, 50, 50, 50]
 
-    mw_crs = [0.1, 0.1, 0.1]
+    mw_crs = [1.0, 1.0, 1.0]
     mw_workers = [1, 4, 8]
-    mw_labels = ['PGHash: 0.1CR, 1 Table', 'PGHash: 0.1CR, 1 Table', 'PGHash: 0.1CR, 1 Table']
-    mw_labelst = ['PGHash: 0.1CR, 10 Tables', 'PGHash: 0.1CR, 10 Tables', 'PGHash: 0.1CR, 10 Tables']
-
-    mw_crs = [1.0]
-    mw_workers = [1]
-    mw_labels = ['PGHash']
-    slide_labels = ['SLIDE']
+    mw_tables_pg = [200, 50, 50]
+    mw_tables_slide = [5, 5, 5]
+    mw_labels_pg = ['Single Device PGHash', '4 Device PGHash', '8 Device PGHash']
+    mw_labels_slide = ['Single Device SLIDE', '4 Device SLIDE', '8 Device SLIDE']
+    mw_labels_dense = ['Single Device FedAvg', '4 Device FedAvg', '8 Device FedAvg']
 
     mt_crs = [0.1, 0.25, 0.5, 1.0]
     mt_workers = [1]
@@ -115,100 +115,113 @@ if __name__ == '__main__':
     mt_colors = ['r', 'g', 'b']
 
     multi_worker_test = False
-    multi_cr = False
-    multi_table = True
+    multi_cr = True
+    multi_table = False
 
-    # Delicious Results
-    for trial in range(1, ntest+1):
+    if dataset == 'Delicious200K':
+        # Delicious Results
+        for trial in range(1, ntest+1):
 
-        if multi_worker_test:
-            for j in range(len(mw_workers)):
+            if multi_worker_test:
+                for j in range(len(mw_workers)):
 
-                plt.figure()
-                cr = mw_crs[j]
-                tables = vary_tables[0]
-                nw = mw_workers[j]
-                file = 'pg-pghash-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr-' + str(tables) + 'tables'
+                    plt.figure()
+                    cr = mw_crs[j]
+                    pg_tables = mw_tables_pg[j]
+                    slide_tables = mw_tables_slide[j]
+                    nw = mw_workers[j]
+                    pg_file = 'pg-pghash-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr-' + str(pg_tables) \
+                              + 'tables-' + '50rehash'
+                    slide_file = 'slide-slide-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr-' \
+                                 + str(slide_tables) + 'tables-' + '50rehash'
+                    dense_file = 'test1-regular-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr'
 
-                test_acc_pg, iters_pg = unpack_raw_test(pgfolder+file)
-                # test_acc_pgt, iters_pgt = unpack_raw_test(folder + 'pg-table-' + file)
+                    test_acc_pg, iters_pg = unpack_raw_test(pg_folder + pg_file)
+                    test_acc_slide, iters_slide = unpack_raw_test(slide_folder + slide_file)
+                    test_acc_dense, iters_dense = unpack_raw_test(dense_folder + dense_file)
 
-                plt.plot(iters_pg, test_acc_pg, label=mw_labels[j], color='r')
-                # plt.plot(iters_pgt, test_acc_pgt, label=mw_labelst[j], color='g')
+                    plt.plot(iters_pg, test_acc_pg, label=mw_labels_pg[j], color='r')
+                    plt.plot(iters_slide, test_acc_slide, label=mw_labels_slide[j], color='b')
+                    plt.plot(iters_dense, test_acc_dense, label=mw_labels_dense[j], color='g')
 
-                # plot slide baseline
-                slide_file = 'slide-slide-' + dataset + '-' + str(nw) + 'workers-' + '1.0cr'
-                slide_filepath = slidefolder + slide_file
-                test_acc_slide, iters_slide = unpack_raw_test(slide_filepath)
-                plt.plot(iters_slide, test_acc_slide, label=slide_labels[j], color='g')
+                    plt.legend(loc='lower right')
+                    plt.ylabel('Test Accuracy', fontsize=15)
+                    plt.xlabel('Iterations', fontsize=15)
+                    plt.xscale("log")
+                    plt.xlim([1e2, 3e3])
+                    plt.ylim([0.15, 0.48])
+                    plt.grid(which="both", alpha=0.25)
+                    # plt.show()
+                    savefilename = 'multiworker' + str(nw) + '.pdf'
+                    plt.savefig(savefilename, format="pdf")
+            elif multi_cr:
+                for j in range(len(sw_crs)):
 
-                # plot dense baseline
-                dense_file = 'dense-' + dataset + '-' + str(nw) + 'workers-' + '1.0cr'
-                baseline_filepath = folder + dense_file
-                test_acc, iters = unpack_raw_test(baseline_filepath)
-                if nw == 1:
-                    leg = 'Dense Baseline'
-                else:
-                    leg = 'FedAvg'
-
-                if j == 2:
-                    iters = iters[:len(iters_pg)]
-                    test_acc = test_acc[:len(test_acc_pg)]
-                plt.plot(iters, test_acc, label=leg, color='b')
-                plt.legend(loc='lower right')
-                plt.ylabel('Test Accuracy', fontsize=15)
-                plt.xlabel('Iterations', fontsize=15)
-                plt.xscale("log")
-                if j == 0:
-                    plt.xlim([1e2, 5e3])
-                else:
-                    plt.xlim([1e2, 6.1e3])
-                plt.ylim([0.15, 0.48])
-                plt.grid(which="both", alpha=0.25)
-                # plt.show()
-                savefilename = 'pg-multiworker' + str(nw) + '.pdf'
-                plt.savefig(savefilename, format="pdf")
-        elif multi_cr:
-            for j in range(len(sw_crs)):
-
-                plt.figure()
-                tables = vary_tables[0]
-                cr = sw_crs[j]
-                file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr-' + str(tables) + 'tables'
-                test_acc, iters = unpack_raw_test(pgfolder + file)
-                plt.plot(iters, test_acc, label=sw_labels[j], color='r')
-                plt.legend(loc='upper left')
-                plt.ylabel('Test Accuracy', fontsize=15)
-                plt.xlabel('Iterations', fontsize=15)
-                plt.xscale("log")
-                plt.xlim([1e2, 5e3])
-                plt.ylim([0.25, 0.48])
-                plt.grid(which="both", alpha=0.25)
-                # plt.show()
-                savefilename = 'pg-varycr' + str(cr) + '.pdf'
-                plt.savefig(savefilename, format="pdf")
-
-        elif multi_table:
-            for j in range(len(mt_crs)):
-                cr = mt_crs[j]
-                plt.figure()
-                for k in range(len(mt_tables)):
-                    tables = mt_tables[k]
-                    color = mt_colors[k]
-                    label = mt_labels[k] + str(cr) + 'CR'
+                    plt.figure()
+                    tables = sw_tables[j]
+                    cr = sw_crs[j]
+                    cr2 = sw_crs_dense[j]
                     file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr-' + str(tables) + 'tables'
-                    test_acc, iters = unpack_raw_test(pgfolder + file)
-                    plt.plot(iters, test_acc, label=label, color=str(color))
-                plt.legend(loc='upper left')
-                plt.ylabel('Test Accuracy', fontsize=15)
-                plt.xlabel('Iterations', fontsize=15)
-                plt.xscale("log")
-                plt.xlim([1e2, 5e3])
-                plt.ylim([0.2, 0.48])
-                plt.grid(which="both", alpha=0.25)
-                # plt.show()
-                savefilename = 'pg-vary-tables' + str(cr) + '.pdf'
-                plt.savefig(savefilename, format="pdf")
+                    # file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr-' + str(tables) + 'tables-50rehash'
+                    dense_file = 'test1-regular-' + dataset + '-1workers-' + str(cr2) + 'cr'
+                    test_acc, iters = unpack_raw_test(pg_folder + file)
+                    test_acc_d, iters_d = unpack_raw_test(dense_folder + dense_file)
+                    plt.plot(iters, test_acc, label=sw_labels[j], color='r')
+                    plt.plot(iters_d, test_acc_d, label=sw_labels_dense[j], color='g')
+                    plt.legend(loc='lower right')
+                    plt.ylabel('Test Accuracy', fontsize=15)
+                    plt.xlabel('Iterations', fontsize=15)
+                    plt.xscale("log")
+                    plt.xlim([1e2, 4e3])
+                    plt.ylim([0.25, 0.48])
+                    plt.grid(which="both", alpha=0.25)
+                    # plt.show()
+                    savefilename = 'pg-varycr' + str(cr) + '.pdf'
+                    plt.savefig(savefilename, format="pdf")
+
+            elif multi_table:
+                for j in range(len(mt_crs)):
+                    cr = mt_crs[j]
+                    plt.figure()
+                    for k in range(len(mt_tables)):
+                        tables = mt_tables[k]
+                        color = mt_colors[k]
+                        label = mt_labels[k] + str(cr) + 'CR'
+                        file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr-' + str(tables) + 'tables'
+                        test_acc, iters = unpack_raw_test(pg_folder + file)
+                        plt.plot(iters, test_acc, label=label, color=str(color))
+                    plt.legend(loc='upper left')
+                    plt.ylabel('Test Accuracy', fontsize=15)
+                    plt.xlabel('Iterations', fontsize=15)
+                    plt.xscale("log")
+                    plt.xlim([1e2, 5e3])
+                    plt.ylim([0.2, 0.48])
+                    plt.grid(which="both", alpha=0.25)
+                    # plt.show()
+                    savefilename = 'pg-vary-tables' + str(cr) + '.pdf'
+                    plt.savefig(savefilename, format="pdf")
+
+    elif dataset == 'Amazon670K':
+
+
+
+        pg_file = 'pg-pghash-' + dataset + '-1workers-1.0cr-50tables-50rehash'
+        slide_file = 'slide-slide-' + dataset + '-1workers-1.0cr-50tables-50rehash'
+
+        test_acc_pg, iters_pg = unpack_raw_test(pg_folder + pg_file)
+        test_acc_slide, iters_slide = unpack_raw_test(slide_folder + slide_file)
+
+        plt.plot(iters_pg, test_acc_pg, label='Single Device PGHash', color='r')
+        plt.plot(iters_slide, test_acc_slide, label='Single Device SLIDE', color='b')
+
+        plt.legend(loc='lower right')
+        plt.ylabel('Test Accuracy', fontsize=15)
+        plt.xlabel('Iterations', fontsize=15)
+        plt.xscale("log")
+        plt.grid(which="both", alpha=0.25)
+        # plt.show()
+        savefilename = 'amazon-comparison-c8.pdf'
+        plt.savefig(savefilename, format="pdf")
 
 
     '''

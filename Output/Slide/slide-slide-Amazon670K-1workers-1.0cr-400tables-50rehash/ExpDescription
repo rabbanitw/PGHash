@@ -1,1 +1,0 @@
-Namespace(name='slide', dataset='Amazon670K', graph_type='fully_connected', hash_type='slide', randomSeed=1203, sdim=8, c=6, num_tables=400, lr=0.0001, cr=1.0, train_bs=128, test_bs=4096, steps_per_lsh=50, steps_per_test=100, epochs=10, hidden_layer_size=128)
