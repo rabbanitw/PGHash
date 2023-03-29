@@ -6,6 +6,7 @@ from itertools import product
 if __name__ == '__main__':
 
 
+    '''
     t4 = tf.constant([[0, 5],
                       [1, 6],
                       [2, 7],
@@ -26,7 +27,22 @@ if __name__ == '__main__':
     u = tf.zeros([3], dtype=tf.float32)
 
     print(tf.tensor_scatter_nd_update(t, indices=[[2], [3], [0]], updates=u, name=None))
+    '''
 
+
+
+    with tf.device('cpu'):
+        A = tf.random.uniform(shape=(10000, 100000))
+        x = tf.random.uniform(shape=(100000, 100))
+
+        t = time.time()
+        b = tf.matmul(A, x)
+        print(time.time()-t)
+
+        t = time.time()
+        for i in range(10000):
+            subA = tf.gather_nd(A, indices=[[i]])
+        print(time.time()-t)
 
     '''
     x = [i for i in product(range(2), repeat=11)]

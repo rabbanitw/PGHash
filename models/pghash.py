@@ -147,42 +147,6 @@ class PGHash(ModelHub):
 
         return self.ci, local_active_counter, true_neurons_bool, fake_neurons
 
-    # ===============================
-    '''
-    def rehash_wta(self, run_dwta=True):
-        B = np.tile(np.eye(self.sdim), (1, int(np.ceil(self.hls/self.sdim))))[:, :self.hls]
-        BW = B @ self.final_dense
-        if run_dwta:
-            for i in range(self.num_tables):
-                gaussian, hash_dict = dwta(BW,  self.c)
-                self.gaussians[i] = gaussian
-                self.hash_dicts[i] = hash_dict
-        else:
-            for i in range(self.num_tables):
-                gaussian, hash_dict = wta(BW,  self.c)
-                self.gaussians[i] = gaussian
-                self.hash_dicts[i] = hash_dict
-
-    def rehash_wta(self):
-        codes_per_weight = int(self.hls/self.c)
-        permutation = np.arange(self.hls)
-        np.random.shuffle(permutation)
-        i = 0
-        j = 1
-        while i < 50:
-            perm = permutation[(j-1)*self.c:j*self.c]
-            perm_weight = self.final_dense[perm, :]
-            hash_dict = pg_dwta(perm_weight, self.c)
-            self.gaussians[i] = perm
-            self.hash_dicts[i] = hash_dict
-            i += 1
-            if j % codes_per_weight == 0:
-                np.random.shuffle(permutation)
-                j = 1
-            else:
-                j += 1
-    '''
-
     def rehash_wta(self):
         potential_indices = np.arange(self.hls)
         for i in range(self.num_tables):

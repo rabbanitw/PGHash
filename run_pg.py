@@ -103,6 +103,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='Delicious200K')
     parser.add_argument('--graph_type', type=str, default='fully_connected')
     parser.add_argument('--hash_type', type=str, default='pghash')
+    parser.add_argument('--dwta', type=int, default=0)
     parser.add_argument('--randomSeed', type=int, default=1203)
     parser.add_argument('--sdim', type=int, default=8)
     parser.add_argument('--c', type=int, default=8)

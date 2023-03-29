@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from util.mlp import SparseNeuralNetwork
+from util.mlp import SparseNeuralNetwork, SparseNeuralNetwork2
 from mpi4py import MPI
 
 
@@ -39,10 +39,9 @@ class ModelHub:
         self.num_c_layers = int(self.cr * self.nl)
         self.weight_idx = (self.nf * self.hls) + self.hls
 
-
-
-
         self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
+        # self.model = SparseNeuralNetwork2([self.nf, self.hls, self.nl])
+
         self.full_model = self.flatten_weights(self.model.get_weights())
         if self.cr < 1:
             # initialize compressed model
