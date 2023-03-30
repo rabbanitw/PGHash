@@ -72,9 +72,6 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
                     test_top1.reset()
                 MPI.COMM_WORLD.Barrier()
 
-            # compute batch size
-            # batch_size = x.get_shape()[0]
-
             init_time = time.time()
 
             # communicate models amongst devices (if multiple devices are present)

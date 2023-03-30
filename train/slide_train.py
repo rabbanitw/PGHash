@@ -61,11 +61,13 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
                 comm_time2 = Method.communicate(Method.model, active_neurons)
                 comm_time = comm_time1 + comm_time2
 
-            # compute batch size
-            batch_size = x.get_shape()[0]
-
             # document total number of active neurons across the batch
             num_active_neurons = np.count_nonzero(true_neurons_bool)
+            total_neruons = 0
+            batch_size = len(sample_active_idx)
+            for i in range(batch_size):
+                total_neruons += len(sample_active_idx[i])
+            average_active_per_sample = total_neruons / batch_size
 
             init_time = time.time()
 
@@ -113,7 +115,7 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
 
             # store and save accuracy and loss values
             recorder.add_new(comp_time + comm_time + lsh_time, comp_time, comm_time, lsh_time, acc1, test_acc,
-                             loss_value.numpy(), top1.avg, losses.avg, num_active_neurons)
+                             loss_value.numpy(), top1.avg, losses.avg, num_active_neurons, average_active_per_sample)
             recorder.save_to_file()
 
             # log every X batches
@@ -121,9 +123,9 @@ def slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, te
             if iterations % 5 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Comm Time %f, LSH Time %f, Loss %.6f, Top 1 Train Accuracy %.4f,"
-                    " Total Active Neurons %d, [%d Total Samples]" % (rank, iterations, (comp_time + comm_time),
+                    " Average Active Neurons %d, [%d Total Samples]" % (rank, iterations, (comp_time + comm_time),
                                                                      comm_time, lsh_time, loss_value.numpy(), acc1,
-                                                                     num_active_neurons, total_batches)
+                                                                     average_active_per_sample, total_batches)
                 )
             iterations += 1
 
