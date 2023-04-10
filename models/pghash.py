@@ -125,9 +125,9 @@ class PGHash(ModelHub):
 
             for k in bs_range:
                 # shave off deactivated neurons
-                local_active_counter[k] = local_active_counter[k] * global_active_counter
+                lac = local_active_counter[k] * global_active_counter
                 # select only active neurons for this sample
-                local_active_counter[k] = full_size[local_active_counter[k]]
+                local_active_counter[k] = full_size[lac]
 
             self.ci = full_size[global_active_counter]
             fake_neurons = []

@@ -6,7 +6,6 @@ from scipy.sparse import (coo_matrix,
                           csr_matrix,
                           vstack)
 from xclib.data import data_utils
-import tensorflow as tf
 
 
 class SparseDataset:
@@ -118,8 +117,6 @@ def load_extreme_data(rank, size, batch_size, train_data_path, test_data_path):
                           sampler=sampler)
     # '''
     trn_dataset = None
-
-
     return train_dl, trn_dataset, num_features, num_labels
 
 

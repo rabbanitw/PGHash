@@ -1,33 +1,17 @@
-import tensorflow as tf
+import torch
 import numpy as np
 import os
+torch.set_default_dtype(torch.float32)
 
 
-def compute_accuracy(y_true, y_pred, lsh_idx, topk=1):
-    # if numpy:
-    #    batches, c = y_pred.shape
-    #    translated_pred = lsh_idx[np.array(find_topk(y_pred, k=topk))]
-    batches, c = y_pred.get_shape()
-    # translated_pred = lsh_idx[tf.math.top_k(y_pred, k=topk).indices.numpy()]
-    translated_pred = lsh_idx[np.array(tf.math.top_k(y_pred, k=topk).indices)]
-    pred_top_idx = np.hstack((np.arange(batches)[:, np.newaxis], translated_pred))
-    true_idx = y_true.indices.numpy()
-    d = np.maximum(pred_top_idx.max(0), true_idx.max(0)) + 1
-    return np.count_nonzero(np.in1d(np.ravel_multi_index(pred_top_idx.T, d),
-                                 np.ravel_multi_index(true_idx.T, d)))/(batches*topk)
-
-
-def compute_accuracy_lsh(y_true, y_pred, lsh_idx, topk=1):
-    result_idx = find_topk(y_pred.numpy(), topk)
-    batches, c = y_pred.get_shape()
-    true_idx = y_true.indices.numpy()
-    count = 0
-    for i in range(batches):
-        for j in range(topk):
-            transform_idx_y = lsh_idx[result_idx[i, j]]
-            top_idx = np.array([i, transform_idx_y])
-            count += int(np.any(np.all(top_idx == true_idx, axis=1)))
-    return count/(batches*topk)
+def compute_accuracy_lsh(y_pred, y_true):
+    top_idx = torch.argmax(y_pred, dim=1)
+    bs = top_idx.size()[0]
+    correct = 0
+    for i in range(bs):
+        if y_true[i, top_idx[i]] > 0:
+            correct += 1
+    return correct/bs
 
 
 class AverageMeter(object):
