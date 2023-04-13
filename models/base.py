@@ -1,12 +1,12 @@
 import numpy as np
-import tensorflow as tf
-from util.mlp import SparseNeuralNetwork, SparseNeuralNetwork2
+from util.mlp import SparseNeuralNetwork, SampledSoftmax
 from mpi4py import MPI
 
 
 class ModelHub:
 
-    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, c, cr, rank, size, influence, i1=0, i2=1):
+    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, c, cr, rank, size, influence, i1=0, i2=1,
+                 sampled_softmax=0):
 
         # initialize all parameters
         self.nl = num_labels
@@ -39,8 +39,10 @@ class ModelHub:
         self.num_c_layers = int(self.cr * self.nl)
         self.weight_idx = (self.nf * self.hls) + self.hls
 
-        self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
-        # self.model = SparseNeuralNetwork2([self.nf, self.hls, self.nl])
+        if not sampled_softmax:
+            self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
+        else:
+            self.model = SampledSoftmax([self.nf, self.hls, self.nl])
 
         self.full_model = self.flatten_weights(self.model.get_weights())
         if self.cr < 1:
@@ -55,33 +57,6 @@ class ModelHub:
         else:
             self.layer_shapes, self.layer_sizes = self.get_model_architecture()
             print('No Compression Being Used')
-
-
-        '''
-        # initialize compressed model
-        worker_layer_dims = [self.nf, self.hls, self.num_c_layers]
-        self.model = SparseNeuralNetwork(worker_layer_dims)
-        self.layer_shapes, self.layer_sizes = self.get_model_architecture()
-
-        # initialize full model in numpy form which is used for communication between devices
-        if self.cr < 1:
-            initializer = tf.keras.initializers.GlorotUniform()
-            initial_final_dense = initializer(shape=(self.hls, self.nl)).numpy()
-            partial_model = self.flatten_weights(self.model.get_weights())
-            partial_size = partial_model.size
-            missing_bias = self.nl - self.num_c_layers
-            missing_weights = self.hls * (self.nl - self.num_c_layers)
-            full_dense_weights = self.hls * self.nl
-            self.full_model = np.zeros(partial_size + missing_weights + missing_bias)
-            self.full_model[:self.weight_idx] = partial_model[:self.weight_idx]
-            self.full_model[self.weight_idx:(self.weight_idx + full_dense_weights)] = initial_final_dense.T.flatten()
-        elif self.cr > 1:
-            print('ERROR: Compression Ratio is Greater Than 1 Which is Impossible!')
-            exit()
-        else:
-            print('No Compression Being Used')
-            self.full_model = self.flatten_weights(self.model.get_weights())
-        '''
 
         # determine where the bias index starts
         self.bias_start = self.full_model.size - self.nl

@@ -6,9 +6,11 @@ import time
 
 class Dense(ModelHub):
 
-    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, rank, size, influence):
+    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, rank, size, influence,
+                 sampled_softmax=0):
 
-        super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, rank, size, influence)
+        super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, rank, size, influence,
+                         sampled_softmax=sampled_softmax)
 
     def simple_average(self, model):
 

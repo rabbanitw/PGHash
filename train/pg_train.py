@@ -134,7 +134,7 @@ def pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1,
             if iterations % 5 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Comm Time %f, LSH Time %f, Loss %.6f, Top 1 Train Accuracy %.4f,"
-                    " Average Active Neurons %d, [%d Total Samples]" % (rank, iterations, (comp_time + comm_time),
+                    " Average Active Neurons %d, [%d Total Samples]" % (rank, iterations, (comp_time + comm_time + lsh_time),
                                                                      comm_time, lsh_time, loss_value.numpy(), acc1,
                                                                      average_active_per_sample, total_batches)
                 )
