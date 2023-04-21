@@ -96,7 +96,6 @@ if __name__ == '__main__':
         recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
 
         # initialize model
-        # optimizer = Adam(learning_rate=args.lr)
         optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
         # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, epsilon=1e-8)
         print('Initializing model...')

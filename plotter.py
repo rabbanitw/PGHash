@@ -87,7 +87,7 @@ if __name__ == '__main__':
     # specify which statistics to graph on the y-axis (will make separate plots)
     stats = 'test-acc-top1.log'
     dataset = 'Delicious200K'
-    dataset = 'Amazon670K'
+    # dataset = 'Amazon670K'
 
     pg_folder = 'Output/Results/PGHash/'
     slide_folder = 'Output/Results/Slide/'
@@ -102,8 +102,9 @@ if __name__ == '__main__':
 
     mw_crs = [1.0, 1.0, 1.0]
     mw_workers = [1, 4, 8]
-    mw_tables_pg = [200, 50, 50]
-    mw_tables_slide = [5, 5, 5]
+    mw_tables_pg = [50, 50, 50]
+    mw_tables_slide = [50, 50, 50]
+    mw_rehash = 1
     mw_labels_pg = ['Single Device PGHash', '4 Device PGHash', '8 Device PGHash']
     mw_labels_slide = ['Single Device SLIDE', '4 Device SLIDE', '8 Device SLIDE']
     mw_labels_dense = ['Single Device FedAvg', '4 Device FedAvg', '8 Device FedAvg']
@@ -114,9 +115,12 @@ if __name__ == '__main__':
     mt_labels = ['PGHash: 5 Tables, ', 'PGHash: 10 Tables, ', 'PGHash: 50 Tables, ']
     mt_colors = ['r', 'g', 'b']
 
-    multi_worker_test = False
-    multi_cr = True
+    amz_workers = [1, 4]
+
+    multi_worker_test = True
+    multi_cr = False
     multi_table = False
+    avg_neuron = False
 
     if dataset == 'Delicious200K':
         # Delicious Results
@@ -131,9 +135,9 @@ if __name__ == '__main__':
                     slide_tables = mw_tables_slide[j]
                     nw = mw_workers[j]
                     pg_file = 'pg-pghash-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr-' + str(pg_tables) \
-                              + 'tables-' + '50rehash'
+                              + 'tables-' + str(mw_rehash) + 'rehash'
                     slide_file = 'slide-slide-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr-' \
-                                 + str(slide_tables) + 'tables-' + '50rehash'
+                                 + str(slide_tables) + 'tables-' + str(mw_rehash) + 'rehash'
                     dense_file = 'test1-regular-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr'
 
                     test_acc_pg, iters_pg = unpack_raw_test(pg_folder + pg_file)
@@ -148,11 +152,11 @@ if __name__ == '__main__':
                     plt.ylabel('Test Accuracy', fontsize=15)
                     plt.xlabel('Iterations', fontsize=15)
                     plt.xscale("log")
-                    plt.xlim([1e2, 3e3])
-                    plt.ylim([0.15, 0.48])
+                    plt.xlim([1e2, 4e3])
+                    plt.ylim([0.25, 0.48])
                     plt.grid(which="both", alpha=0.25)
                     # plt.show()
-                    savefilename = 'multiworker' + str(nw) + '.pdf'
+                    savefilename = 'multiworker' + str(nw) + '-' + str(mw_rehash) + 'rehash' + '.pdf'
                     plt.savefig(savefilename, format="pdf")
             elif multi_cr:
                 for j in range(len(sw_crs)):
@@ -201,27 +205,41 @@ if __name__ == '__main__':
                     savefilename = 'pg-vary-tables' + str(cr) + '.pdf'
                     plt.savefig(savefilename, format="pdf")
 
+            elif avg_neuron:
+
+                print('hi')
+
     elif dataset == 'Amazon670K':
 
+        for workers in amz_workers:
 
+            plt.figure()
+            pg_file = 'pg-pghash-' + dataset + '-' + str(workers) + 'workers-1.0cr-50tables-50rehash'
+            slide_file = 'slide-slide-' + dataset + '-' + str(workers) + 'workers-1.0cr-50tables-50rehash'
 
-        pg_file = 'pg-pghash-' + dataset + '-1workers-1.0cr-50tables-50rehash'
-        slide_file = 'slide-slide-' + dataset + '-1workers-1.0cr-50tables-50rehash'
+            test_acc_pg, iters_pg = unpack_raw_test(pg_folder + pg_file)
+            test_acc_slide, iters_slide = unpack_raw_test(slide_folder + slide_file)
 
-        test_acc_pg, iters_pg = unpack_raw_test(pg_folder + pg_file)
-        test_acc_slide, iters_slide = unpack_raw_test(slide_folder + slide_file)
+            if workers == 1:
+                legend_slide = 'Single Device SLIDE'
+                legend_pg = 'Single Device PGHash'
+            else:
+                legend_slide = str(workers) + ' Device SLIDE'
+                legend_pg = str(workers) + ' Device PGHash'
 
-        plt.plot(iters_pg, test_acc_pg, label='Single Device PGHash', color='r')
-        plt.plot(iters_slide, test_acc_slide, label='Single Device SLIDE', color='b')
+            plt.plot(iters_pg, test_acc_pg, label=legend_pg, color='r')
+            plt.plot(iters_slide, test_acc_slide, label=legend_slide, color='b')
 
-        plt.legend(loc='lower right')
-        plt.ylabel('Test Accuracy', fontsize=15)
-        plt.xlabel('Iterations', fontsize=15)
-        plt.xscale("log")
-        plt.grid(which="both", alpha=0.25)
-        # plt.show()
-        savefilename = 'amazon-comparison-c8.pdf'
-        plt.savefig(savefilename, format="pdf")
+            plt.legend(loc='lower right')
+            plt.ylabel('Test Accuracy', fontsize=15)
+            plt.xlabel('Iterations', fontsize=15)
+            plt.xscale("log")
+            plt.grid(which="both", alpha=0.25)
+            plt.xlim([100, 1.55e4])
+            plt.ylim([0, 0.35])
+            # plt.show()
+            savefilename = 'amazon' + str(workers) + '-comparison-c8.pdf'
+            plt.savefig(savefilename, format="pdf")
 
 
     '''

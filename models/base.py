@@ -6,7 +6,7 @@ from mpi4py import MPI
 class ModelHub:
 
     def __init__(self, num_labels, num_features, hidden_layer_size, sdim, c, cr, rank, size, influence, i1=0, i2=1,
-                 sampled_softmax=0):
+                 sampled_softmax=0, ss_frac=0.1):
 
         # initialize all parameters
         self.nl = num_labels
@@ -42,7 +42,7 @@ class ModelHub:
         if not sampled_softmax:
             self.model = SparseNeuralNetwork([self.nf, self.hls, self.nl])
         else:
-            self.model = SampledSoftmax([self.nf, self.hls, self.nl])
+            self.model = SampledSoftmax([self.nf, self.hls, self.nl], int(ss_frac*self.nl))
 
         self.full_model = self.flatten_weights(self.model.get_weights())
         if self.cr < 1:

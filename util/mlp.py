@@ -1,70 +1,4 @@
 import tensorflow as tf
-import numpy as np
-
-
-class SS_Linear(tf.keras.layers.Layer):
-    def __init__(self, units, input_dim, num_classes, cr):
-        super().__init__()
-        self.num_classes = num_classes
-        self.num_sampled = int(num_classes * cr)
-        self.acc = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
-        w_init = tf.random_normal_initializer()
-        self.w = tf.Variable(
-            initial_value=w_init(shape=(input_dim, units), dtype="float32"),
-            trainable=True,
-        )
-        b_init = tf.zeros_initializer()
-        self.b = tf.Variable(
-            initial_value=b_init(shape=(units,), dtype="float32"), trainable=True
-        )
-
-    def call(self, inputs, training=True):
-        (x, y) = inputs
-        if training:
-
-            y = tf.sparse.to_dense(y)
-            # randomize the label selected (since there's a tie)
-            # label_idx = tf.expand_dims(tf.math.argmax(y*tf.random.uniform(tf.shape(y)), axis=1), axis=1)
-            # regular argmax
-            label_idx = tf.expand_dims(tf.math.argmax(y, axis=1), axis=1)
-            loss = tf.reduce_mean(tf.nn.sampled_softmax_loss(weights=tf.transpose(self.w), biases=self.b, labels=label_idx,
-                                                             inputs=x, num_sampled=self.num_sampled,
-                                                             num_classes=self.num_classes,
-                                                             #num_true=y.get_shape()[1],
-                                                             remove_accidental_hits=False))
-            return loss
-        else:
-            logits = tf.matmul(x, self.w) + self.b
-            logits = tf.convert_to_tensor(logits.numpy()[:, :-1])
-            y = tf.sparse.to_dense(y)
-            self.acc.update_state(logits, y)
-            accuracy = self.acc.result().numpy()
-            self.acc.reset_state()
-            return accuracy
-
-class Sparse_Linear(tf.keras.layers.Layer):
-    def __init__(self, units=32, input_dim=32):
-        super(Sparse_Linear, self).__init__()
-        self.w = self.add_weight(
-            shape=(input_dim, units), initializer="random_normal", trainable=True
-        )
-        self.b = self.add_weight(shape=(units,), initializer="zeros", trainable=True)
-
-    def call(self, inputs):
-        return tf.sparse.sparse_dense_matmul(inputs, self.w) + self.b
-
-
-class SampledSoftmax(tf.keras.Model):
-
-    def __init__(self, layer_dims, cr=0.1, name="sampled_softmax", **kwargs):
-        super(SampledSoftmax, self).__init__(name=name, **kwargs)
-        self.sparse_dense = Sparse_Linear(layer_dims[1], layer_dims[0])
-        self.sampled_softmax_layer = SS_Linear(layer_dims[2], layer_dims[1], layer_dims[2], cr)
-
-    def call(self, inputs, training=True):
-        (x, y) = inputs
-        output = self.sparse_dense(x)
-        return self.sampled_softmax_layer([output, y], training=training)
 
 
 def DenseLayer(output_dim):
@@ -81,3 +15,77 @@ def SparseNeuralNetwork(layer_dims, sparsity=True):
     # return the constructed network architecture
     return model
 
+
+class SampledSoftmaxLoss:
+    """
+    Class that instantiates a sampled softmax loss
+    ...
+    Attributes
+    ----------
+    num_classes : int
+        Total number of classes in the softmax output
+    sample_frac : float
+        Fraction of num_classes to sample
+    num_true_labels: int
+        Number of true labels in the final output (1 for multiclass classfication)
+    loss_name: string
+        (Optional) Name for the loss function
+    Methods
+    -------
+    loss(y_true, data):
+        Returns the sampled softmax loss given the true label and the all additional data
+    """
+
+    def __init__(self, num_classes, num_sampled, num_true_labels=1, loss_name="sampled_softmax_loss"):
+        self.num_classes = num_classes
+        self.num_true_labels = num_true_labels
+        self.num_sampled = num_sampled
+        self.loss_name = loss_name
+
+    def loss(self, y_true, data):
+        """
+        inputs to the softmax layer
+        """
+        inp, bias, weights = data
+        if self.num_true_labels == 1:
+            labels = tf.expand_dims(y_true, -1)
+        else:
+            labels = y_true
+
+        logits = tf.matmul(inp, weights)
+        logits = tf.nn.bias_add(logits, bias)
+
+        return logits, tf.reduce_mean(tf.nn.sampled_softmax_loss(
+            weights=tf.transpose(weights),
+            biases=bias,
+            labels=labels,
+            inputs=inp,
+            num_true=self.num_true_labels,
+            num_sampled=self.num_sampled,
+            num_classes=self.num_classes,
+            remove_accidental_hits=True,
+            name=self.loss_name
+        ))
+
+
+class SampledSoftmax(tf.keras.Model):
+
+    def __init__(self, layer_dims, num_sampled):
+        super().__init__()
+
+        self.input_size = layer_dims[0]
+        self.hls = layer_dims[1]
+        self.num_classes = layer_dims[2]
+
+        inp = tf.keras.layers.Input(shape=(self.input_size,), sparse=True)
+        dense1 = tf.keras.layers.Dense(self.hls, activation="relu")(inp)
+        output_layer = tf.keras.layers.Dense(self.num_classes)
+        out = output_layer(dense1)
+
+        self.full_model = tf.keras.Model(inp, out)
+        self.half_model = tf.keras.Model(inp, dense1)
+
+        self.out_weights = output_layer.weights[0]
+        self.out_bias = output_layer.bias
+
+        self.train_loss = SampledSoftmaxLoss(self.num_classes, num_sampled).loss
