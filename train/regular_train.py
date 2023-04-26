@@ -111,7 +111,7 @@ def regular_train(rank, size, Method, optimizer, train_data, test_data, losses, 
         for (x_batch_test, y_batch_test) in test_data:
             y_pred_test = model(x_batch_test, training=False)
             test_acc1.update_state(y_pred_test, tf.sparse.to_dense(y_batch_test))
-            test_acc = test_acc1.result().numpy()
+        test_acc = test_acc1.result().numpy()
         print("Epoch %d: Top 1 Test Accuracy %.4f" % (epoch, test_acc))
         recorder.add_testacc(test_acc)
         # reset accuracy statistics for next epoch
