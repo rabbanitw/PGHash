@@ -86,6 +86,7 @@ if __name__ == '__main__':
 
     # specify which statistics to graph on the y-axis (will make separate plots)
     stats = 'test-acc-top1.log'
+    datasets = ['Delicious200K', 'Amazon670K']
     dataset = 'Delicious200K'
     # dataset = 'Amazon670K'
 
@@ -117,10 +118,11 @@ if __name__ == '__main__':
 
     amz_workers = [1, 4]
 
-    multi_worker_test = True
+    multi_worker_test = False
     multi_cr = False
     multi_table = False
-    avg_neuron = False
+    avg_neuron = True
+    sampled_softmax = False
 
     if dataset == 'Delicious200K':
         # Delicious Results
@@ -205,10 +207,6 @@ if __name__ == '__main__':
                     savefilename = 'pg-vary-tables' + str(cr) + '.pdf'
                     plt.savefig(savefilename, format="pdf")
 
-            elif avg_neuron:
-
-                print('hi')
-
     elif dataset == 'Amazon670K':
 
         for workers in amz_workers:
@@ -241,64 +239,82 @@ if __name__ == '__main__':
             savefilename = 'amazon' + str(workers) + '-comparison-c8.pdf'
             plt.savefig(savefilename, format="pdf")
 
+    elif dataset == 'Wiki325K':
+        print('hi')
 
-    '''
-    for trial in range(1, ntest+1):
+    if sampled_softmax:
 
-        if single_worker_test:
-            for j in range(len(sw_tables)):
-                cr = sw_crs[j]
-                if sw_tables[j] == 1:
-                    file = 'test' + str(trial) + '-pghash-' + dataset + '-' + str(num_workers) + 'workers-' \
-                           + str(cr) + 'cr'
-                else:
-                    file = 'test' + str(trial) + '-pghash-' + dataset + '-' + str(num_workers) + 'workers-' + str(cr) \
-                           + 'cr-' + str(sw_tables[j]) + 't'
-                test_acc, iters = unpack_raw_test(pgfolder+file)
+        for i in range(2):
+            ds = datasets[i]
 
-                plt.plot(iters, test_acc, label=sw_labels[idx], color=colors[idx])
-                idx += 1
+            if ds == 'Amazon670K':
+                pg_file = 'pg-pghash-' + ds + '-' + '1workers-1.0cr-50tables-50rehash'
+            else:
+                pg_file = 'pg-pghash-' + ds + '-' + '1workers-1.0cr-50tables-1rehash'
 
-            # plot dense baseline
-            baseline_filepath = fedavg_folder + 'test1-regular-Delicious200K-1workers-1.0cr'
-            test_acc, iters = unpack_raw_test(baseline_filepath)
-            plt.plot(iters, test_acc, label='Dense Baseline', color=colors[idx])
-            plt.legend(loc='best')
-            plt.ylabel('Test Accuracy', fontsize=14)
-            plt.xlabel('Iterations', fontsize=14)
+            plt.figure()
+            ss_file = 'sampled-softmax-' + ds + '-' + '1workers-0.1cr'
+
+            test_acc_ss, iters_ss = unpack_raw_test(dense_folder + ss_file)
+            test_acc_pg, iters_pg = unpack_raw_test(pg_folder + pg_file)
+
+            plt.plot(iters_pg, test_acc_pg, label='PGHash', color='r')
+            plt.plot(iters_ss, test_acc_ss, label='Sampled Softmax', color='k')
+
+            plt.legend(loc='lower right')
+            plt.ylabel('Test Accuracy', fontsize=15)
+            plt.xlabel('Iterations', fontsize=15)
             plt.xscale("log")
-            plt.xlim([1e2, 1e4])
-            plt.grid()
-            # plt.show()
-            plt.savefig("pg1worker.pdf", format="pdf")
-        else:
-            for j in range(len(mw_labels)):
-                cr = mw_crs[j]
-                nw = mw_workers[j]
-                file = 'test' + str(trial) + '-pghash-' + dataset + '-' + str(nw) + 'workers-' \
-                       + str(cr) + 'cr'
-                test_acc, iters = unpack_raw_test(pgfolder + file)
-                plt.plot(iters, test_acc, label=mw_labels[idx], color=colors[idx])
-                idx += 1
-            # plot dense baseline
-            for j in range(len(mw_labels)):
-                nw = mw_workers[j]
-                baseline_filepath = fedavg_folder + 'test1-regular-Delicious200K-' + str(nw) + 'workers-1.0cr'
-                test_acc, iters = unpack_raw_test(baseline_filepath)
-                if j == 0:
-                    leg = 'Dense Baseline: 1 Worker'
-                else:
-                    leg = 'FedAvg: ' + str(nw) + ' Workers'
-                plt.plot(iters, test_acc, label=leg, color=colors[idx])
-                idx += 1
-            plt.legend(loc='best')
-            plt.ylabel('Test Accuracy', fontsize=14)
-            plt.xlabel('Iterations', fontsize=14)
-            plt.xscale("log")
-            plt.xlim([1e2, 1e4])
-            plt.grid()
-            # plt.show()
-            plt.savefig("pg-multiworker.pdf", format="pdf")
-    '''
+            plt.grid(which="both", alpha=0.25)
+            if ds == 'Amazon670K':
+                plt.xlim([1e2, 1.55e4])
+                plt.ylim([0, 0.35])
+            else:
+                plt.xlim([1e2, 5e3])
+                plt.ylim([0.05, 0.48])
+            #plt.show()
+            savefilename = ds + '-sampled-softmax.pdf'
+            plt.savefig(savefilename, format="pdf")
 
+    if avg_neuron:
+
+        for i in range(2):
+            ds = datasets[i]
+
+            if ds == 'Amazon670K':
+                pg_file = 'pg-neurons-pghash-' + ds + '-' + '1workers-1.0cr-50tables-50rehash'
+                nc = 670091
+            else:
+                pg_file = 'pg-pghash-' + ds + '-' + '1workers-1.0cr-50tables-1rehash'
+                nc = 205443
+
+            neurons_pg, iters_pg = unpack_raw_test(pg_folder + pg_file, file_test='r0-avg-active-neurons.log')
+
+            plt.figure()
+
+            plt.plot(iters_pg, neurons_pg/nc, label='PGHash', color='r')
+
+            # plt.plot(iters_pg, neurons_pg, label='PGHash', color='r')
+            # plt.plot(iters_pg, nc*np.ones(len(iters_pg)), label='Dense Baseline', color='g')
+
+            plt.legend(loc='upper right')
+            plt.ylabel('Average Activated Neurons per Sample (%)', fontsize=15)
+            plt.xlabel('Iterations', fontsize=15)
+            plt.xscale("log")
+            # plt.yscale("log")
+            plt.grid(which="both", alpha=0.25)
+
+            #'''
+            if ds == 'Amazon670K':
+                plt.xlim([1, 1.55e4])
+                plt.ylim([0, 0.375])
+            else:
+                # plt.yscale("log")
+                plt.xlim([1, 5e3])
+                plt.ylim([0, 0.375])
+            #'''
+            # plt.show()
+            # savefilename = ds + '-log-avg-neurons.pdf'
+            savefilename = ds + '-avg-neurons.pdf'
+            plt.savefig(savefilename, format="pdf")
 

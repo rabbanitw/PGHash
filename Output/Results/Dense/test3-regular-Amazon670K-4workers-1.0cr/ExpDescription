@@ -1,1 +1,0 @@
-Namespace(name='test3', dataset='Amazon670K', graph_type='fully_connected', hash_type='regular', randomSeed=5425, sdim=8, num_tables=50, lr=0.0001, cr=1.0, train_bs=256, test_bs=2048, steps_per_lsh=50, steps_per_test=500, epochs=5, hidden_layer_size=128, q=50)
