@@ -87,8 +87,9 @@ if __name__ == '__main__':
     # specify which statistics to graph on the y-axis (will make separate plots)
     stats = 'test-acc-top1.log'
     datasets = ['Delicious200K', 'Amazon670K']
-    dataset = 'Delicious200K'
+    # dataset = 'Delicious200K'
     # dataset = 'Amazon670K'
+    dataset = 'Wiki325K'
 
     pg_folder = 'Output/Results/PGHash/'
     slide_folder = 'Output/Results/Slide/'
@@ -121,8 +122,10 @@ if __name__ == '__main__':
     multi_worker_test = False
     multi_cr = False
     multi_table = False
-    avg_neuron = True
+    avg_neuron = False
     sampled_softmax = False
+
+    ds = dataset + '/'
 
     if dataset == 'Delicious200K':
         # Delicious Results
@@ -142,9 +145,9 @@ if __name__ == '__main__':
                                  + str(slide_tables) + 'tables-' + str(mw_rehash) + 'rehash'
                     dense_file = 'test1-regular-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr'
 
-                    test_acc_pg, iters_pg = unpack_raw_test(pg_folder + pg_file)
-                    test_acc_slide, iters_slide = unpack_raw_test(slide_folder + slide_file)
-                    test_acc_dense, iters_dense = unpack_raw_test(dense_folder + dense_file)
+                    test_acc_pg, iters_pg = unpack_raw_test(pg_folder + ds + pg_file)
+                    test_acc_slide, iters_slide = unpack_raw_test(slide_folder + ds + slide_file)
+                    test_acc_dense, iters_dense = unpack_raw_test(dense_folder + ds + dense_file)
 
                     plt.plot(iters_pg, test_acc_pg, label=mw_labels_pg[j], color='r')
                     plt.plot(iters_slide, test_acc_slide, label=mw_labels_slide[j], color='b')
@@ -170,8 +173,8 @@ if __name__ == '__main__':
                     file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr-' + str(tables) + 'tables'
                     # file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr-' + str(tables) + 'tables-50rehash'
                     dense_file = 'test1-regular-' + dataset + '-1workers-' + str(cr2) + 'cr'
-                    test_acc, iters = unpack_raw_test(pg_folder + file)
-                    test_acc_d, iters_d = unpack_raw_test(dense_folder + dense_file)
+                    test_acc, iters = unpack_raw_test(pg_folder + ds + file)
+                    test_acc_d, iters_d = unpack_raw_test(dense_folder + ds + dense_file)
                     plt.plot(iters, test_acc, label=sw_labels[j], color='r')
                     plt.plot(iters_d, test_acc_d, label=sw_labels_dense[j], color='g')
                     plt.legend(loc='lower right')
@@ -194,7 +197,7 @@ if __name__ == '__main__':
                         color = mt_colors[k]
                         label = mt_labels[k] + str(cr) + 'CR'
                         file = 'pg-pghash-' + dataset + '-' + '1workers-' + str(cr) + 'cr-' + str(tables) + 'tables'
-                        test_acc, iters = unpack_raw_test(pg_folder + file)
+                        test_acc, iters = unpack_raw_test(pg_folder + ds + file)
                         plt.plot(iters, test_acc, label=label, color=str(color))
                     plt.legend(loc='upper left')
                     plt.ylabel('Test Accuracy', fontsize=15)
@@ -215,8 +218,8 @@ if __name__ == '__main__':
             pg_file = 'pg-pghash-' + dataset + '-' + str(workers) + 'workers-1.0cr-50tables-50rehash'
             slide_file = 'slide-slide-' + dataset + '-' + str(workers) + 'workers-1.0cr-50tables-50rehash'
 
-            test_acc_pg, iters_pg = unpack_raw_test(pg_folder + pg_file)
-            test_acc_slide, iters_slide = unpack_raw_test(slide_folder + slide_file)
+            test_acc_pg, iters_pg = unpack_raw_test(pg_folder + ds +pg_file)
+            test_acc_slide, iters_slide = unpack_raw_test(slide_folder + ds + slide_file)
 
             if workers == 1:
                 legend_slide = 'Single Device SLIDE'
@@ -240,7 +243,37 @@ if __name__ == '__main__':
             plt.savefig(savefilename, format="pdf")
 
     elif dataset == 'Wiki325K':
-        print('hi')
+
+        for run in range(1, 2):
+            for workers in amz_workers:
+
+                plt.figure()
+                pg_file = 'run' + str(run) + '-pghash-' + dataset + '-' + str(workers) + 'workers-1.0cr-50tables-50rehash'
+                slide_file = 'run' + str(run) + '-slide-' + dataset + '-' + str(workers) + 'workers-1.0cr-50tables-50rehash'
+
+                test_acc_pg, iters_pg = unpack_raw_test(pg_folder + ds + pg_file)
+                test_acc_slide, iters_slide = unpack_raw_test(slide_folder + ds + slide_file)
+
+                if workers == 1:
+                    legend_slide = 'Single Device SLIDE'
+                    legend_pg = 'Single Device PGHash'
+                else:
+                    legend_slide = str(workers) + ' Device SLIDE'
+                    legend_pg = str(workers) + ' Device PGHash'
+
+                plt.plot(iters_pg, test_acc_pg, label=legend_pg, color='r')
+                plt.plot(iters_slide, test_acc_slide, label=legend_slide, color='b')
+
+                plt.legend(loc='lower right')
+                plt.ylabel('Test Accuracy', fontsize=15)
+                plt.xlabel('Iterations', fontsize=15)
+                plt.xscale("log")
+                plt.grid(which="both", alpha=0.25)
+                # plt.xlim([100, 1.55e4])
+                # plt.ylim([0, 0.35])
+                plt.show()
+                savefilename = 'amazon' + str(workers) + '-comparison-c8.pdf'
+                # plt.savefig(savefilename, format="pdf")
 
     if sampled_softmax:
 
@@ -255,8 +288,8 @@ if __name__ == '__main__':
             plt.figure()
             ss_file = 'sampled-softmax-' + ds + '-' + '1workers-0.1cr'
 
-            test_acc_ss, iters_ss = unpack_raw_test(dense_folder + ss_file)
-            test_acc_pg, iters_pg = unpack_raw_test(pg_folder + pg_file)
+            test_acc_ss, iters_ss = unpack_raw_test(dense_folder + ds + ss_file)
+            test_acc_pg, iters_pg = unpack_raw_test(pg_folder + ds + pg_file)
 
             plt.plot(iters_pg, test_acc_pg, label='PGHash', color='r')
             plt.plot(iters_ss, test_acc_ss, label='Sampled Softmax', color='k')
@@ -288,7 +321,7 @@ if __name__ == '__main__':
                 pg_file = 'pg-pghash-' + ds + '-' + '1workers-1.0cr-50tables-1rehash'
                 nc = 205443
 
-            neurons_pg, iters_pg = unpack_raw_test(pg_folder + pg_file, file_test='r0-avg-active-neurons.log')
+            neurons_pg, iters_pg = unpack_raw_test(pg_folder + ds + pg_file, file_test='r0-avg-active-neurons.log')
 
             plt.figure()
 
