@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from mpi4py import MPI
 from models.base import ModelHub
-from util.mlp import SparseNeuralNetwork
+from util.network import SparseNeuralNetwork
 from util.misc import compute_accuracy_lsh
 import time
 from lsh import pg_hashtable, wta, dwta, pg_dwta

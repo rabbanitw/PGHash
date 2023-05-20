@@ -3,7 +3,7 @@ import tensorflow as tf
 from lsh import slide_hashtable, wta, dwta
 from models.base import ModelHub
 from util.misc import compute_accuracy_lsh
-from util.mlp import SparseNeuralNetwork
+from util.network import SparseNeuralNetwork
 import time
 from mpi4py import MPI
 

@@ -1,5 +1,5 @@
 import numpy as np
-from util.mlp import SparseNeuralNetwork, SampledSoftmax
+from util.network import SparseNeuralNetwork, SampledSoftmax
 from mpi4py import MPI
 
 

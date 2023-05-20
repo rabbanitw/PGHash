@@ -1,99 +1,91 @@
-import numpy as np
-import networkx as nx
+import tensorflow as tf
 
 
-class Graph:
+def DenseLayer(output_dim):
+    return tf.keras.layers.Dense(output_dim)
 
-    def __init__(self, rank, size, comm, graph, weight_type=None, p=0.5, num_c=None):
 
-        # Initialize MPI variables
-        self.rank = rank  # index of worker
-        self.size = size  # total number of workers
-        self.comm = comm
+def SparseNeuralNetwork(layer_dims, sparsity=True):
+    inputs = tf.keras.layers.Input(shape=(layer_dims[0],), sparse=sparsity)
+    x = DenseLayer(layer_dims[1])(inputs)
+    x = tf.keras.activations.relu(x)
+    x = DenseLayer(layer_dims[2])(x)
+    # create the model
+    model = tf.keras.Model(inputs, x)
+    # return the constructed network architecture
+    return model
 
-        # Create graph from string input or return custom inputted graph
-        self.graph = self.selectGraph(graph, p, num_c)
 
-        # Determine each node's neighbors and the weights for each node in the Graph
-        self.neighbor_list = self.getNeighbors(rank)
-        self.neighbor_weights = self.getWeights(weight_type)
+class SampledSoftmaxLoss:
+    """
+    Class that instantiates a sampled softmax loss
+    ...
+    Attributes
+    ----------
+    num_classes : int
+        Total number of classes in the softmax output
+    sample_frac : float
+        Fraction of num_classes to sample
+    num_true_labels: int
+        Number of true labels in the final output (1 for multiclass classfication)
+    loss_name: string
+        (Optional) Name for the loss function
+    Methods
+    -------
+    loss(y_true, data):
+        Returns the sampled softmax loss given the true label and the all additional data
+    """
 
-    def selectGraph(self, graph, p, num_c):
+    def __init__(self, num_classes, num_sampled, num_true_labels=1, loss_name="sampled_softmax_loss"):
+        self.num_classes = num_classes
+        self.num_true_labels = num_true_labels
+        self.num_sampled = num_sampled
+        self.loss_name = loss_name
 
-        if isinstance(graph, list):
-            return graph
+    def loss(self, y_true, data):
+        """
+        inputs to the softmax layer
+        """
+        inp, bias, weights = data
+        if self.num_true_labels == 1:
+            labels = tf.expand_dims(y_true, -1)
         else:
-            g = []
-            if graph == 'fully-connected':
-                fc_graph = nx.complete_graph(self.size)
-                g = fc_graph.edges
+            labels = y_true
 
-            elif graph == 'ring':
-                ring_graph = nx.cycle_graph(self.size)
-                g = ring_graph.edges
+        logits = tf.matmul(inp, weights)
+        logits = tf.nn.bias_add(logits, bias)
 
-            elif graph == 'clique-ring':
-                per_c = int(self.size / num_c)
-                rem = self.size % num_c
-                for i in range(num_c):
-                    if i != num_c - 1:
-                        fc_graph = nx.complete_graph(per_c)
-                        fc_graph = nx.convert_node_labels_to_integers(fc_graph, i * per_c)
-                        g += fc_graph.edges
-                        g.append((i * per_c + per_c - 1, i * per_c + per_c))
-                    else:
-                        fc_graph = nx.complete_graph(per_c + rem)
-                        fc_graph = nx.convert_node_labels_to_integers(fc_graph, i * per_c)
-                        g += fc_graph.edges
-                        if num_c > 2:
-                            g.append((self.size - 1, 0))
+        return logits, tf.reduce_mean(tf.nn.sampled_softmax_loss(
+            weights=tf.transpose(weights),
+            biases=bias,
+            labels=labels,
+            inputs=inp,
+            num_true=self.num_true_labels,
+            num_sampled=self.num_sampled,
+            num_classes=self.num_classes,
+            remove_accidental_hits=True,
+            name=self.loss_name
+        ))
 
-            elif graph == 'erdos-renyi':
-                if self.rank == 0:
-                    while True:
-                        erdos_graph = nx.erdos_renyi_graph(self.size, p)
-                        if nx.is_connected(erdos_graph):
-                            g = erdos_graph.edges
-                            num_edges = len(g) * np.ones(1, dtype=np.int)
-                            print('Generated Erdos-Renyi Graph Edges:')
-                            print(g)
-                            break
-                else:
-                    num_edges = np.zeros(1, dtype=np.int)
-                self.comm.Bcast(num_edges, root=0)
-                num_edges = num_edges[0]
-                if self.rank != 0:
-                    data = np.empty((num_edges, 2), dtype=np.int)
-                else:
-                    data = np.array(g, dtype=np.int)
-                self.comm.Bcast(data, root=0)
-                if self.rank != 0:
-                    for i in range(num_edges):
-                        g.append((data[i][0], data[i][1]))
-            return g
 
-    def getWeights(self, weight_type=None):
+class SampledSoftmax(tf.keras.Model):
 
-        if weight_type == 'uniform-symmetric':
-            num_neighbors = len(self.neighbor_list)
-            weights = (1 / self.size) * np.ones(num_neighbors)
+    def __init__(self, layer_dims, num_sampled):
+        super().__init__()
 
-        # Neighborhood uniform weights by default
-        else:
-            num_neighbors = len(self.neighbor_list)
-            weights = (1 / (num_neighbors + 1)) * np.ones(num_neighbors)
+        self.input_size = layer_dims[0]
+        self.hls = layer_dims[1]
+        self.num_classes = layer_dims[2]
 
-        return weights
+        inp = tf.keras.layers.Input(shape=(self.input_size,), sparse=True)
+        dense1 = tf.keras.layers.Dense(self.hls, activation="relu")(inp)
+        output_layer = tf.keras.layers.Dense(self.num_classes)
+        out = output_layer(dense1)
 
-    def getNeighbors(self, rank):
+        self.full_model = tf.keras.Model(inp, out)
+        self.half_model = tf.keras.Model(inp, dense1)
 
-        neighbors = [[] for _ in range(self.size)]
-        for edge in self.graph:
-            node1, node2 = edge[0], edge[1]
-            if node1 == node2:
-                print("Invalid input graph! Circle! (" + str(node1) + ", " + str(node2) + ")")
-                exit()
-            neighbors[node1].append(node2)
-            neighbors[node2].append(node1)
+        self.out_weights = output_layer.weights[0]
+        self.out_bias = output_layer.bias
 
-        return neighbors[rank]
+        self.train_loss = SampledSoftmaxLoss(self.num_classes, num_sampled).loss

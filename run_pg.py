@@ -57,7 +57,6 @@ if __name__ == '__main__':
     graph_type = args.graph_type
     weight_type = None
     num_clusters = None
-    # G = Graph(rank, size, MPI.COMM_WORLD, graph_type, weight_type, num_c=num_clusters)
 
     # training parameters
     train_bs = args.train_bs
@@ -95,33 +94,30 @@ if __name__ == '__main__':
         losses = AverageMeter()
         recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
 
-        # initialize model
+        # initialize optimizer
         optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-        # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, epsilon=1e-8)
+
+        # select method used and begin training once all devices are ready
         print('Initializing model...')
         if method == 'PGHash':
             Method = PGHash(n_labels, n_features, rank, size, 1 / size, args)
-            # begin training once all devices are ready
             MPI.COMM_WORLD.Barrier()
-            pg_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
+            pg_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
 
         elif method == 'SLIDE':
             Method = SLIDE(n_labels, n_features, rank, size, 1 / size, args)
-            # begin training once all devices are ready
             MPI.COMM_WORLD.Barrier()
             slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
 
         elif method == 'Regular':
             Method = Dense(n_labels, n_features, hls, sdim, num_tables, cr, rank, size, 1 / size)
-            # begin training once all devices are ready
             MPI.COMM_WORLD.Barrier()
-            regular_train(rank, size, Method, optimizer, train_data, test_data, losses, top1, recorder, args)
+            regular_train(rank, Method, optimizer, train_data, test_data, losses, top1, recorder, args)
 
         elif method == 'Regular-SS':
             Method = Dense(n_labels, n_features, hls, sdim, num_tables, cr, rank, size, 1 / size, sampled_softmax=1)
-            # begin training once all devices are ready
             MPI.COMM_WORLD.Barrier()
-            regular_train_ss(rank, size, Method, optimizer, train_data, test_data, losses, top1, recorder, args)
+            regular_train_ss(rank, Method, optimizer, train_data, test_data, losses, top1, recorder, args)
 
         else:
             print('ERROR: No Method Selected')
