@@ -2,18 +2,17 @@ import numpy as np
 from collections import defaultdict
 
 
-def pg_hashtable(weights, n, c, sdim):
+def pg_hashtable(weights, n, k, c):
     '''
     compute hashing
     :param vectors:
     :param n:
-    :param sdim:
+    :param c:
     :return:
     '''
 
     # create gaussian matrix=
-    pg_gaussian = (1/int(n/sdim))*np.tile(np.random.normal(size=(c, sdim)), (1, int(np.ceil(n/sdim))))[:, :n]
-    # pg_gaussian = np.random.normal(size=(sdim, n))=
+    pg_gaussian = (1 / int(n / c)) * np.tile(np.random.normal(size=(k, c)), (1, int(np.ceil(n / c))))[:, :n]
 
     # Apply PGHash to weights.
     hash_table = np.heaviside(pg_gaussian@weights, 0)
@@ -33,10 +32,10 @@ def pg_hashtable(weights, n, c, sdim):
     return pg_gaussian, hash_dict
 
 
-def slide_hashtable(weights, n, c):
+def slide_hashtable(weights, n, k):
 
     # create gaussian matrix
-    slide_gaussian = np.random.normal(size=(c, n))
+    slide_gaussian = np.random.normal(size=(k, n))
 
     # Apply Slide to weights.
     hash_table = np.heaviside(slide_gaussian@weights, 0)
@@ -55,8 +54,8 @@ def slide_hashtable(weights, n, c):
     return slide_gaussian, hash_dict
 
 
-def wta(weights, c):
-    permutation = np.random.choice(weights.shape[0], c, replace=False)
+def wta(weights, k):
+    permutation = np.random.choice(weights.shape[0], k, replace=False)
     hash_code = np.argmax(weights[permutation, :], axis=0)
     # create dictionary holding the base 2 hash code (key) and the weights which share that hash code (value)
     hash_dict = defaultdict(list)
@@ -68,8 +67,8 @@ def wta(weights, c):
     return permutation, hash_dict
 
 
-def dwta(weights, c):
-    permutation = np.random.choice(weights.shape[0], c, replace=False)
+def dwta(weights, k):
+    permutation = np.random.choice(weights.shape[0], k, replace=False)
     selected_weights = weights[permutation, :]
     empty_bins = np.count_nonzero(selected_weights, axis=0) == 0
     hash_code = np.argmax(selected_weights, axis=0)
@@ -82,7 +81,7 @@ def dwta(weights, c):
         while np.any(empty_bins):
             empty_bins_roll = np.roll(empty_bins, i)
             hash_code[empty_bins] = hash_code[empty_bins_roll]
-            constant[empty_bins] += 2*c
+            constant[empty_bins] += 2 * k
             empty_bins = (hash_code == -1)
             i += 1
         hash_code += constant
@@ -97,7 +96,7 @@ def dwta(weights, c):
     return permutation, hash_dict
 
 
-def pg_dwta(weights, c):
+def pg_dwta(weights, k):
     empty_bins = np.count_nonzero(weights, axis=0) == 0
     hash_code = np.argmax(weights, axis=0)
     # if empty bins exist, run DWTA
@@ -109,7 +108,7 @@ def pg_dwta(weights, c):
         while np.any(empty_bins):
             empty_bins_roll = np.roll(empty_bins, i)
             hash_code[empty_bins] = hash_code[empty_bins_roll]
-            constant[empty_bins] += 2*c
+            constant[empty_bins] += 2 * k
             empty_bins = (hash_code == -1)
             i += 1
         hash_code += constant

@@ -24,8 +24,8 @@ if __name__ == '__main__':
     parser.add_argument('--hash_type', type=str, default='pghash')
     parser.add_argument('--dwta', type=int, default=0)
     parser.add_argument('--randomSeed', type=int, default=1203)
-    parser.add_argument('--sdim', type=int, default=8)
     parser.add_argument('--c', type=int, default=8)
+    parser.add_argument('--k', type=int, default=8)
     parser.add_argument('--num_tables', type=int, default=50)
     parser.add_argument('--lr', type=int, default=1e-4)
     parser.add_argument('--cr', type=float, default=1)
@@ -48,7 +48,8 @@ if __name__ == '__main__':
     tf.keras.utils.set_random_seed(randomSeed)
 
     # hashing parameters
-    sdim = args.sdim
+    c = args.c
+    k = args.k
     num_tables = args.num_tables
     hash_type = args.hash_type
     steps_per_lsh = args.steps_per_lsh
@@ -65,6 +66,10 @@ if __name__ == '__main__':
     hls = args.hidden_layer_size
     train_data_path = 'data/' + args.dataset + '/train.txt'
     test_data_path = 'data/' + args.dataset + '/test.txt'
+
+    if k > c and args.dwta == 1:
+        print('Error: Compression Size Smaller than Hash Length for PGHash-D')
+        exit()
 
     if args.hash_type[:2] == 'pg':
         method = 'PGHash'
@@ -110,12 +115,12 @@ if __name__ == '__main__':
             slide_train(rank, Method, optimizer, train_data, test_data, losses, top1, test_top1, recorder, args)
 
         elif method == 'Regular':
-            Method = Dense(n_labels, n_features, hls, sdim, num_tables, cr, rank, size, 1 / size)
+            Method = Dense(n_labels, n_features, hls, c, k, cr, rank, size, 1 / size)
             MPI.COMM_WORLD.Barrier()
             regular_train(rank, Method, optimizer, train_data, test_data, losses, top1, recorder, args)
 
         elif method == 'Regular-SS':
-            Method = Dense(n_labels, n_features, hls, sdim, num_tables, cr, rank, size, 1 / size, sampled_softmax=1)
+            Method = Dense(n_labels, n_features, hls, c, k, cr, rank, size, 1 / size, sampled_softmax=1)
             MPI.COMM_WORLD.Barrier()
             regular_train_ss(rank, Method, optimizer, train_data, test_data, losses, top1, recorder, args)
 

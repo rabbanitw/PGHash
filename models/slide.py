@@ -12,7 +12,7 @@ class SLIDE(ModelHub):
 
     def __init__(self, num_labels, num_features, rank, size, influence, args):
 
-        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.c, args.cr, rank, size,
+        super().__init__(num_labels, num_features, args.hidden_layer_size, args.c, args.k, args.cr, rank, size,
                          influence)
 
         self.num_tables = args.num_tables
@@ -55,7 +55,7 @@ class SLIDE(ModelHub):
 
     def rehash(self):
         for i in range(self.num_tables):
-            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.c)
+            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.k)
             self.gaussians[i] = gaussian
             self.hash_dicts[i] = hash_dict
 
@@ -138,17 +138,11 @@ class SLIDE(ModelHub):
         return self.ci, local_active_counter, true_neurons_bool, fake_neurons
 
     # ======================================
-    def rehash_wta(self, run_dwta=True):
-        if run_dwta:
-            for i in range(self.num_tables):
-                gaussian, hash_dict = dwta(self.final_dense,  self.c)
-                self.gaussians[i] = gaussian
-                self.hash_dicts[i] = hash_dict
-        else:
-            for i in range(self.num_tables):
-                gaussian, hash_dict = wta(self.final_dense,  self.c)
-                self.gaussians[i] = gaussian
-                self.hash_dicts[i] = hash_dict
+    def rehash_wta(self):
+        for i in range(self.num_tables):
+            gaussian, hash_dict = dwta(self.final_dense,  self.k)
+            self.gaussians[i] = gaussian
+            self.hash_dicts[i] = hash_dict
 
     def lsh_vanilla_wta(self, model, data):
 
@@ -185,7 +179,7 @@ class SLIDE(ModelHub):
                 while np.any(empty_bins):
                     empty_bins_roll = np.roll(empty_bins, i)
                     hash_code[empty_bins] = hash_code[empty_bins_roll]
-                    constant[empty_bins] += 2 * self.c
+                    constant[empty_bins] += 2 * self.k
                     empty_bins = (hash_code == -1)
                     i += 1
                 hash_code += constant

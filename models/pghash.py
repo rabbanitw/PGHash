@@ -25,7 +25,7 @@ class PGHash(ModelHub):
 
     def __init__(self, num_labels, num_features, rank, size, influence, args):
 
-        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.c, args.cr, rank, size,
+        super().__init__(num_labels, num_features, args.hidden_layer_size, args.c, args.k, args.cr, rank, size,
                          influence)
 
         self.num_tables = args.num_tables
@@ -68,7 +68,7 @@ class PGHash(ModelHub):
 
     def rehash(self):
         for i in range(self.num_tables):
-            gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.c, self.sdim)
+            gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.k, self.c)
             self.gaussians[i] = gaussian
             self.hash_dicts[i] = hash_dict
 
@@ -150,10 +150,10 @@ class PGHash(ModelHub):
     def rehash_wta(self):
         potential_indices = np.arange(self.hls)
         for i in range(self.num_tables):
-            indices = np.random.choice(potential_indices, self.sdim, replace=False)
-            perm = np.random.choice(indices, self.c, replace=False)
+            indices = np.random.choice(potential_indices, self.c, replace=False)
+            perm = np.random.choice(indices, self.k, replace=False)
             perm_weight = self.final_dense[perm, :]
-            hash_dict = pg_dwta(perm_weight, self.c)
+            hash_dict = pg_dwta(perm_weight, self.k)
             self.gaussians[i] = perm
             self.hash_dicts[i] = hash_dict
 
@@ -192,7 +192,7 @@ class PGHash(ModelHub):
                 while np.any(empty_bins):
                     empty_bins_roll = np.roll(empty_bins, i)
                     hash_code[empty_bins] = hash_code[empty_bins_roll]
-                    constant[empty_bins] += 2 * self.c
+                    constant[empty_bins] += 2 * self.k
                     empty_bins = (hash_code == -1)
                     i += 1
                 hash_code += constant
@@ -370,10 +370,8 @@ class PGHash(ModelHub):
         for i in range(num_tables):
 
             # create gaussian matrix
-            pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
-                                                                    int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
-
-            # pg_gaussian = np.random.normal(size=(self.sdim, self.hls))
+            pg_gaussian = (1 / int(self.hls / self.c)) * np.tile(np.random.normal(size=(self.c, self.c)),
+                                                                    int(np.ceil(self.hls / self.c)))[:, :self.hls]
 
             # Apply PGHash to weights.
             hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
@@ -411,7 +409,7 @@ class PGHash(ModelHub):
                 if i == 1:
                     thresh = cutoff
                 elif i == num_tables-2:
-                    thresh = int(self.sdim/2)
+                    thresh = int(self.c/2)
 
         # remove selected neurons (in a smart way)
         gap = unique - self.num_c_layers
@@ -463,10 +461,8 @@ class PGHash(ModelHub):
         cur_idx = np.empty((self.num_c_layers, bs), dtype=np.int)
 
         # create gaussian matrix
-        pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
-                                                                int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
-
-        # pg_gaussian = np.random.normal(size=(self.sdim, self.hls))
+        pg_gaussian = (1 / int(self.hls / self.c)) * np.tile(np.random.normal(size=(self.c, self.c)),
+                                                                int(np.ceil(self.hls / self.c)))[:, :self.hls]
 
         # Apply PGHash to weights.
         hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
@@ -505,33 +501,3 @@ class PGHash(ModelHub):
         self.bias_idx = self.ci + self.bias_start
 
         return self.ci, None
-
-'''
-        def exchange_idx(self):
-        t = time.time()
-        if self.rank == 0:
-            self.device_idxs = np.empty((self.size, self.num_c_layers), dtype=np.int32)
-        send_buf = -1*np.ones(self.num_c_layers, dtype=np.int32)
-        send_buf[:len(self.ci)] = self.ci
-        MPI.COMM_WORLD.Gather(send_buf, self.device_idxs, root=0)
-        if self.rank == 0:
-            temp = []
-            for dev in range(self.size):
-                dev_idx = self.device_idxs[dev, :]
-                temp.append(dev_idx[dev_idx != -1])
-            self.device_idxs = temp
-            self.unique, self.count = np.unique(np.concatenate(temp, dtype=np.int32), return_counts=True)
-            self.unique_len = len(self.unique)
-            self.unique_idx = np.empty(self.nl, dtype=np.int64)
-            self.unique_idx[self.unique] = np.arange(self.unique_len)
-            MPI.COMM_WORLD.Bcast(np.array([self.unique_len]), root=0)
-            MPI.COMM_WORLD.Bcast(self.unique, root=0)
-        else:
-            data = np.empty(1, dtype=np.int64)
-            MPI.COMM_WORLD.Bcast(data, root=0)
-            self.unique_len = data[0]
-            data = np.empty(self.unique_len, dtype=np.int32)
-            MPI.COMM_WORLD.Bcast(data, root=0)
-            self.unique = data
-        return time.time()-t
-'''
