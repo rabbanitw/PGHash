@@ -52,18 +52,11 @@ def pg_train(rank, Method, optimizer, train_data, test_data, losses, train_acc_m
 
             # rehashing step: weights of final layer are hashed and placed into buckets depending upon their hash code
             if (iterations-1) % steps_per_rehash == 0:
-                # either run PGHash or PGHash-D (DWTA variation)
-                if args.dwta:
-                    Method.rehash_wta()
-                else:
-                    Method.rehash()
+                Method.rehash()
 
             # active neuron selection step: each sample in batch is hashed and the resulting hash code is used
             # to select which neurons will be activated (exact matches -- vanilla style)
-            if args.dwta:
-                active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla_wta(Method.model, x)
-            else:
-                active_idx, sample_active_idx, true_neurons_bool, fake_n = Method.lsh_vanilla(Method.model, x)
+            active_idx, sample_active_idx, true_neurons_bool = Method.lsh_vanilla(Method.model, x)
 
             lsh_time = time.time() - lsh_init
 

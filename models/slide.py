@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from lsh import slide_hashtable, wta, dwta
+from lsh import slide_hashtable, dwta
 from models.base import ModelHub
 from util.misc import compute_accuracy_lsh
 from util.network import SparseNeuralNetwork
