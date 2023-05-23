@@ -78,20 +78,41 @@ class SLIDE(ModelHub):
         return acc_meter.avg
 
     def rehash(self):
-        for i in range(self.num_tables):
-            gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.k)
-            self.gaussians[i] = gaussian
-            self.hash_dicts[i] = hash_dict
+        """
+        Function which performs the weight hashing every X iterations for PGHash.
+        :return: A new set of hash codes (and subsequent buckets) for the final layer weights
+        """
+
+        # Two hashing methods are SLIDE with SimHash and DWTA
+        if self.dwta:
+            for i in range(self.num_tables):
+                gaussian, hash_dict = dwta(self.final_dense, self.k)
+                self.gaussians[i] = gaussian
+                self.hash_dicts[i] = hash_dict
+        else:
+            for i in range(self.num_tables):
+                gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.k)
+                self.gaussians[i] = gaussian
+                self.hash_dicts[i] = hash_dict
 
     def lsh_vanilla(self, model, data):
+        """
+        Function which performs the input hashing for each sample in a batch of data.
+        :param model: Current recommender system model
+        :param data: Batch of training data
+        :return: Active neurons for each sample in a batch of data
+        """
 
-        # get input layer for LSH
+        # initialize half model which will spit out the input to the final dense layer
         feature_extractor = tf.keras.Model(
             inputs=model.inputs,
             outputs=model.layers[2].output,  # this is the post relu
         )
 
+        # get input layer for LSH using current model
         in_layer = feature_extractor(data).numpy()
+
+        # find batch size and initialize parameters
         bs = in_layer.shape[0]
         bs_range = np.arange(bs)
         local_active_counter = [np.zeros(self.nl, dtype=bool) for _ in range(bs)]
@@ -105,108 +126,32 @@ class SLIDE(ModelHub):
             gaussian = self.gaussians[i]
             hash_dict = self.hash_dicts[i]
 
-            # Apply PG to input vector.
-            transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
-
-            # convert  data to base 2 to remove repeats
-            base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-
-            for j in bs_range:
-                hc = base2_hash[j]
-                active_neurons = hash_dict[hc]
-                local_active_counter[j][active_neurons] = True
-                global_active_counter[active_neurons] = True
-
-            unique = np.count_nonzero(global_active_counter)
-            if unique >= self.num_c_layers:
-                break
+            # DWTA
+            if self.dwta:
+                # Apply WTA to input vector.
+                selected_weights = in_layer.T[gaussian, :]
+                empty_bins = np.count_nonzero(selected_weights, axis=0) == 0
+                hash_code = np.argmax(selected_weights, axis=0)
+                # if empty bins exist, run DWTA
+                if np.any(empty_bins):
+                    # perform DWTA
+                    hash_code[empty_bins] = -1
+                    constant = np.zeros_like(hash_code)
+                    i = 1
+                    while np.any(empty_bins):
+                        empty_bins_roll = np.roll(empty_bins, i)
+                        hash_code[empty_bins] = hash_code[empty_bins_roll]
+                        constant[empty_bins] += 2 * self.k
+                        empty_bins = (hash_code == -1)
+                        i += 1
+                    hash_code += constant
+            # SimHash
             else:
-                prev_global = np.copy(global_active_counter)
-        # remove selected neurons (in a smart way)
-        gap = unique - self.num_c_layers
-        if gap > 0:
-            if prev_global is None:
-                p = global_active_counter / unique
-            else:
-                # remove most recent selected neurons if multiple tables are used
-                change = global_active_counter != prev_global
-                p = change / np.count_nonzero(change)
+                # Apply PG to input vector.
+                transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
 
-            deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
-            global_active_counter[deactivate] = False
-
-            for k in bs_range:
-                # shave off deactivated neurons
-                local_active_counter[k] = local_active_counter[k] * global_active_counter
-                # select only active neurons for this sample
-                local_active_counter[k] = full_size[local_active_counter[k]]
-
-            self.ci = full_size[global_active_counter]
-            fake_neurons = []
-            true_neurons_bool = global_active_counter
-        else:
-            remaining_neurons = full_size[np.logical_not(global_active_counter)]
-            true_neurons_bool = np.copy(global_active_counter)
-            fake_neurons = remaining_neurons[:-gap]
-            global_active_counter[fake_neurons] = True
-            self.ci = full_size[global_active_counter]
-            #t = time.time()
-            for k in bs_range:
-                # select only active neurons for this sample
-                local_active_counter[k] = full_size[local_active_counter[k]]
-            #print(time.time()-t)
-
-        # update indices with new current index
-        self.bias_idx = self.ci + self.bias_start
-
-        return self.ci, local_active_counter, true_neurons_bool, fake_neurons
-
-    # ======================================
-    def rehash_wta(self):
-        for i in range(self.num_tables):
-            gaussian, hash_dict = dwta(self.final_dense,  self.k)
-            self.gaussians[i] = gaussian
-            self.hash_dicts[i] = hash_dict
-
-    def lsh_vanilla_wta(self, model, data):
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=model.inputs,
-            outputs=model.layers[2].output,  # this is the post relu
-        )
-
-        in_layer = feature_extractor(data).numpy()
-        bs = in_layer.shape[0]
-        bs_range = np.arange(bs)
-        local_active_counter = [np.zeros(self.nl, dtype=bool) for _ in range(bs)]
-        global_active_counter = np.zeros(self.nl, dtype=bool)
-        full_size = np.arange(self.nl)
-        prev_global = None
-        unique = 0
-        for i in range(self.num_tables):
-
-            # create gaussian matrix
-            gaussian = self.gaussians[i]
-            hash_dict = self.hash_dicts[i]
-
-            # Apply WTA to input vector.
-            selected_weights = in_layer.T[gaussian, :]
-            empty_bins = np.count_nonzero(selected_weights, axis=0) == 0
-            hash_code = np.argmax(selected_weights, axis=0)
-            # if empty bins exist, run DWTA
-            if np.any(empty_bins):
-                # perform DWTA
-                hash_code[empty_bins] = -1
-                constant = np.zeros_like(hash_code)
-                i = 1
-                while np.any(empty_bins):
-                    empty_bins_roll = np.roll(empty_bins, i)
-                    hash_code[empty_bins] = hash_code[empty_bins_roll]
-                    constant[empty_bins] += 2 * self.k
-                    empty_bins = (hash_code == -1)
-                    i += 1
-                hash_code += constant
+                # convert  data to base 2 to remove repeats
+                hash_code = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
 
             for j in bs_range:
                 hc = hash_code[j]
@@ -219,6 +164,7 @@ class SLIDE(ModelHub):
                 break
             else:
                 prev_global = np.copy(global_active_counter)
+
         # remove selected neurons (in a smart way)
         gap = unique - self.num_c_layers
         if gap > 0:
@@ -256,14 +202,21 @@ class SLIDE(ModelHub):
 
         return self.ci, local_active_counter, true_neurons_bool, fake_neurons
 
-    # ======================================
-
     def exchange_idx_vanilla(self, bool_idx):
+        """
+        Function sends the processes the indices each process uses in order to average correctly
+        :param bool_idx: boolean list of which neurons are active for each sample
+        :return: Time taken to perform this function
+        """
         t = time.time()
         dev_bools = np.empty((self.size, self.nl), dtype=np.bool_)
+        # send boolean list to all other processes (equivalent to central server)
         MPI.COMM_WORLD.Allgather(bool_idx, dev_bools)
+        # count how many processes had each neuron active
         count = np.sum(dev_bools, axis=0)
+        # only care about the neurons which were updated (non-updated neurons are not averaged)
         self.count = count[count > 0]
+        # keep track of all active neurons for each device
         total_active = np.zeros(self.nl, dtype=bool)
         self.device_idxs = []
         for dev in range(self.size):
@@ -277,6 +230,12 @@ class SLIDE(ModelHub):
         return time.time()-t
 
     def smart_average_vanilla(self, model, ci):
+        """
+        Function performs averaging amongst all processes for weights which have been changed.
+        :param model: Current model for each process
+        :param ci: Current indices/neurons used within the model
+        :return: Communication time to perform the averaging
+        """
 
         # update the model
         self.update_full_model(model)
@@ -323,6 +282,13 @@ class SLIDE(ModelHub):
         return comm_time
 
     def communicate(self, model, ci):
+        """
+        Function which allows for different patters of averaging (periodic averaging, etc.).
+        :param model: Current model for each process
+        :param ci: Current indices/neurons used within the model
+        :param smart: Boolean to enable smart averaging (and not lazy averaging)
+        :return:
+        """
 
         # have to have this here because of the case that i1 = 0 (cant do 0 % 0)
         self.iter += 1
