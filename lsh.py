@@ -4,11 +4,12 @@ from collections import defaultdict
 
 def pghash_lsh(weights, n, k, c):
     '''
-    compute hashing
-    :param vectors:
-    :param n:
-    :param c:
-    :return:
+    Compute PGHash hashing scheme.
+    :param weights: Entire final layer weights
+    :param n: Number of neurons
+    :param k: Hash length
+    :param c: Sketch dimension
+    :return: Gaussian used in PGHash and buckets (dictionary) for neurons
     '''
 
     # create gaussian matrix=
@@ -32,7 +33,14 @@ def pghash_lsh(weights, n, k, c):
     return pg_gaussian, hash_dict
 
 
-def slide_hashtable(weights, n, k):
+def slide_lsh(weights, n, k):
+    '''
+    Compute SLIDE hashing scheme.
+    :param weights: Entire final layer weights
+    :param n: Number of neurons
+    :param k: Hash length
+    :return: Gaussian used in SLIDE and buckets (dictionary) for neurons
+    '''
 
     # create gaussian matrix
     slide_gaussian = np.random.normal(size=(k, n))
@@ -55,6 +63,14 @@ def slide_hashtable(weights, n, k):
 
 
 def dwta(weights, k):
+    """
+    Performs generic DWTA hashing scheme.
+    :param weights: Entire final layer weights
+    :param k: Hash length
+    :return: Permutation list (random coordinates selected) and buckets (dictionary) for neurons
+    """
+
+    # determine the random coordinates
     permutation = np.random.choice(weights.shape[0], k, replace=False)
     selected_weights = weights[permutation, :]
     empty_bins = np.count_nonzero(selected_weights, axis=0) == 0
@@ -84,6 +100,12 @@ def dwta(weights, k):
 
 
 def pghashd_lsh(weights, k):
+    """
+        Performs end of PGHash-D hashing scheme.
+        :param weights: Entire final layer weights
+        :param k: Hash length
+        :return: Buckets (dictionary) for neurons
+        """
     empty_bins = np.count_nonzero(weights, axis=0) == 0
     hash_code = np.argmax(weights, axis=0)
     # if empty bins exist, run DWTA
@@ -108,4 +130,3 @@ def pghashd_lsh(weights, k):
     for key in hash_dict:
         hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
     return hash_dict
-

@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from lsh import slide_hashtable, dwta
+from lsh import slide_lsh, dwta
 from models.base import ModelHub
 from util.misc import compute_accuracy_lsh
 from util.network import SparseNeuralNetwork
@@ -91,7 +91,7 @@ class SLIDE(ModelHub):
                 self.hash_dicts[i] = hash_dict
         else:
             for i in range(self.num_tables):
-                gaussian, hash_dict = slide_hashtable(self.final_dense, self.hls, self.k)
+                gaussian, hash_dict = slide_lsh(self.final_dense, self.hls, self.k)
                 self.gaussians[i] = gaussian
                 self.hash_dicts[i] = hash_dict
 

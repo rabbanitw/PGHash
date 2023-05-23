@@ -6,7 +6,6 @@ from itertools import product
 
 
 def compute_accuracy_lsh(y_pred, y_true, lsh_idx, num_l, topk=1):
-    # result_idx = find_topk(y_pred.numpy(), topk)
     val, result_idx = tf.math.top_k(y_pred, k=topk)
     batches = y_pred.get_shape()[0]
     true_idx = y_true.indices.numpy()
