@@ -5,7 +5,7 @@ from models.base import ModelHub
 from util.network import SparseNeuralNetwork
 from util.misc import compute_accuracy_lsh
 import time
-from lsh import pghash_lsh, pghashd_lsh
+from util.lsh import pghash_lsh, pghashd_lsh
 
 
 class PGHash(ModelHub):
