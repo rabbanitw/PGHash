@@ -97,7 +97,7 @@ if __name__ == '__main__':
         top1 = AverageMeter()
         test_top1 = AverageMeter()
         losses = AverageMeter()
-        recorder = Recorder('Output', MPI.COMM_WORLD.Get_size(), rank, args)
+        recorder = Recorder('output', MPI.COMM_WORLD.Get_size(), rank, args)
 
         # initialize optimizer
         optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)

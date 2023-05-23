@@ -87,9 +87,9 @@ if __name__ == '__main__':
     # dataset = 'Amazon670K'
     dataset = 'Wiki325K'
 
-    pg_folder = 'Output/Results/PGHash/'
-    slide_folder = 'Output/Results/Slide/'
-    dense_folder = 'Output/Results/Dense/'
+    pg_folder = 'output/Results/PGHash/'
+    slide_folder = 'output/Results/Slide/'
+    dense_folder = 'output/Results/Dense/'
 
     sw_labels = ['PGHash: 0.1CR', 'PGHash: 0.25CR', 'Full PGHash']
     sw_labels_dense = ['Dense Baseline', 'Dense Baseline', 'Dense Baseline', 'Dense Baseline']
