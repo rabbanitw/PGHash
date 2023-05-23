@@ -5,13 +5,37 @@ import time
 
 
 class Dense(ModelHub):
+    """
+    Class performs full-training for large-scale recommender systems.
+    """
 
-    def __init__(self, num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, rank, size, q, influence):
+    def __init__(self, num_labels, num_features, hidden_layer_size, c, k, cr, rank, size, influence,
+                 sampled_softmax=0):
+        """
+        Initializes the full-training model.
+        :param num_labels: Dimensionality of the labels
+        :param num_features: Dimensionality of the features
+        :param hidden_layer_size: Size of the one hidden layer in the MLP
+        :param c: Sketch (compression) dimension
+        :param k: Hash length
+        :param cr: Compression ratio
+        :param rank: Rank of a given process (process ID)
+        :param size: Total number of processes
+        :param influence: The weighting that each process carries during averaging (default is uniform)
+        :param sampled_softmax: Boolean which signals if the Sampled Softmax algorithm is used
+        """
 
-        super().__init__(num_labels, num_features, hidden_layer_size, sdim, num_tables, cr, rank, size, q, influence)
+        super().__init__(num_labels, num_features, hidden_layer_size, c, k, cr, rank, size, influence,
+                         sampled_softmax=sampled_softmax)
 
     def simple_average(self, model):
-
+        """
+        Function that averages all weights, even those that were not updated. This function is not used in our work,
+        and is only a lazy approach.
+        :param model: Current model for each process
+        :return: Communication time to perform the averaging
+        """
+        # update the full model
         self.update_full_model(model)
 
         # create receiving buffer
@@ -28,7 +52,13 @@ class Dense(ModelHub):
         return self.model, toc - tic
 
     def communicate(self, model):
-
+        """
+        Function which allows for different patters of averaging (periodic averaging, etc.).
+        :param model: Current model for each process
+        :param ci: Current indices/neurons used within the model
+        :param smart: Boolean to enable smart averaging (and not lazy averaging)
+        :return:
+        """
         # have to have this here because of the case that i1 = 0 (cant do 0 % 0)
         self.iter += 1
         comm_time = 0

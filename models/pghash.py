@@ -2,34 +2,37 @@ import numpy as np
 import tensorflow as tf
 from mpi4py import MPI
 from models.base import ModelHub
-from util.mlp import SparseNeuralNetwork
+from util.network import SparseNeuralNetwork
 from util.misc import compute_accuracy_lsh
 import time
-from lsh import pg_hashtable
-
-
-def get_unique_N(iterable, N):
-    """Yields (in order) the first N unique elements of iterable.
-    Might yield less if data too short."""
-    seen = set()
-    for e in iterable:
-        if e in seen:
-            continue
-        seen.add(e)
-        yield e
-        if len(seen) == N:
-            return
+from util.lsh import pghash_lsh, pghashd_lsh
 
 
 class PGHash(ModelHub):
+    """
+    Class to apply our PGHash(-D) algorithm to recommender systems.
+    """
 
     def __init__(self, num_labels, num_features, rank, size, influence, args):
+        """
+        Initializing the PGHash class.
+        :param num_labels: Dimensionality of labels in recommender system dataset
+        :param num_features: Dimensionality of features in recommender system dataset
+        :param rank: Rank of process
+        :param size: Total number of processes
+        :param influence: The communication weighting each process is assigned (usually is uniform)
+        :param args: Remainder of arguments
+        """
 
-        super().__init__(num_labels, num_features, args.hidden_layer_size, args.sdim, args.cr, rank, size, influence)
+        # inherit the general Base class (which deals with updating the model dynamically)
+        super().__init__(num_labels, num_features, args.hidden_layer_size, args.c, args.k, args.cr, rank, size,
+                         influence)
 
+        # initialize parameters and lists for tables
         self.num_tables = args.num_tables
-        self.gaussians = [[] for _ in range(self.num_tables)]
+        self.SB = [[] for _ in range(self.num_tables)]
         self.hash_dicts = [[] for _ in range(self.num_tables)]
+        self.dwta = args.dwta
 
         # initialize full model for the root device for testing accuracy
         if self.rank == 0:
@@ -46,7 +49,17 @@ class PGHash(ModelHub):
             # set big model weights
             self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
 
-    def test_full_model(self, test_data, acc_meter, epoch_test=True):
+    def test_full_model(self, test_data, acc_meter, epoch_test=True, num_batches=30):
+        """
+        Function which performs testing on the
+        :param test_data: Test data for recommender system
+        :param acc_meter: Accuracy meter which stores the average accuracies
+        :param epoch_test: Boolean dictating if testing is done on entire or subset of test data
+        :param num_batches: Number of batches of the test set used to evaluate the accuracy (to reduce comp. costs)
+        :return: Average test accuracy over either the entire test set or a subset of batches
+        """
+
+        # load the entire model to test on the root process
         self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
         label_idx = np.arange(self.nl)
         if epoch_test:
@@ -57,7 +70,7 @@ class PGHash(ModelHub):
                 acc_meter.update(test_acc1, test_batch)
         else:
             test_data.shuffle(len(test_data))
-            sub_test_data = test_data.take(30)
+            sub_test_data = test_data.take(num_batches)
             for (x_batch_test, y_batch_test) in sub_test_data:
                 y_pred_test = self.big_model(x_batch_test, training=False)
                 test_batch = x_batch_test.get_shape()[0]
@@ -66,20 +79,54 @@ class PGHash(ModelHub):
         return acc_meter.avg
 
     def rehash(self):
-        for i in range(self.num_tables):
-            gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
-            self.gaussians[i] = gaussian
-            self.hash_dicts[i] = hash_dict
+        """
+        Function which performs the weight hashing every X iterations for PGHash.
+        :return: A new set of hash codes (and subsequent buckets) for the final layer weights
+        """
 
-    def lsh_vanilla(self, model, data, sparse_rehash=True):
+        # Two hashing methods are PGHash and PGHash-D (DWTA variant)
+        if self.dwta:
+            # create list of possible coordinates to randomly select for DWTA
+            potential_indices = np.arange(self.hls)
+            for i in range(self.num_tables):
+                # server randomly selects coordinates for DWTA (stored as permutation list), vector is dimension c
+                indices = np.random.choice(potential_indices, self.c, replace=False)
+                # process selects a k-subset of the c coordinates to use for on-device DWTA
+                perm = np.random.choice(indices, self.k, replace=False)
+                # index the k coordinates for each neuron (size is k x n)
+                perm_weight = self.final_dense[perm, :]
+                # run PGHash-D LSH
+                hash_dict = pghashd_lsh(perm_weight, self.k)
+                # save the permutation list in local memory (small memory cost) and hash tables
+                self.SB[i] = perm
+                self.hash_dicts[i] = hash_dict
+        else:
+            for i in range(self.num_tables):
+                # perform PGHash LSH
+                SB, hash_dict = pghash_lsh(self.final_dense, self.hls, self.k, self.c)
+                # save gaussian and hash tables
+                # when rehashing is performed every step, these cn be immediately discarded
+                self.SB[i] = SB
+                self.hash_dicts[i] = hash_dict
 
-        # get input layer for LSH
+    def lsh_vanilla(self, model, data):
+        """
+        Function which performs the input hashing for each sample in a batch of data.
+        :param model: Current recommender system model
+        :param data: Batch of training data
+        :return: Active neurons for each sample in a batch of data
+        """
+
+        # initialize half model which will spit out the input to the final dense layer
         feature_extractor = tf.keras.Model(
             inputs=model.inputs,
             outputs=model.layers[2].output,  # this is the post relu
         )
 
+        # get input layer for LSH using current model
         in_layer = feature_extractor(data).numpy()
+
+        # find batch size and initialize parameters
         bs = in_layer.shape[0]
         bs_range = np.arange(bs)
         local_active_counter = [np.zeros(self.nl, dtype=bool) for _ in range(bs)]
@@ -88,32 +135,59 @@ class PGHash(ModelHub):
         prev_global = None
         unique = 0
 
+        # run through the prescribed number of tables to find exact matches (vanilla) which are marked as active neurons
         for i in range(self.num_tables):
+            # load gaussian (or SB) matrix
+            SB = self.SB[i]
+            hash_dict = self.hash_dicts[i]
 
-            # create gaussian matrix
-            if not sparse_rehash:
-                gaussian, hash_dict = pg_hashtable(self.final_dense, self.hls, self.sdim)
+            # PGHash-D hashing style
+            if self.dwta:
+                # Apply WTA to input vector.
+                selected_weights = in_layer.T[SB, :]
+                empty_bins = np.count_nonzero(selected_weights, axis=0) == 0
+                hash_code = np.argmax(selected_weights, axis=0)
+                # if empty bins exist, run DWTA
+                if np.any(empty_bins):
+                    # perform DWTA
+                    hash_code[empty_bins] = -1
+                    constant = np.zeros_like(hash_code)
+                    i = 1
+                    while np.any(empty_bins):
+                        empty_bins_roll = np.roll(empty_bins, i)
+                        hash_code[empty_bins] = hash_code[empty_bins_roll]
+                        constant[empty_bins] += 2 * self.k
+                        empty_bins = (hash_code == -1)
+                        i += 1
+                    hash_code += constant
+
+            # PGHash hashing style
             else:
-                gaussian = self.gaussians[i]
-                hash_dict = self.hash_dicts[i]
+                # apply PG Gaussian to input vector
+                transformed_layer = np.heaviside(SB @ in_layer.T, 0)
 
-            # Apply PG to input vector.
-            transformed_layer = np.heaviside(gaussian @ in_layer.T, 0)
+                # convert data to base 2 to remove repeats
+                hash_code = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
 
-            # convert  data to base 2 to remove repeats
-            base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-
+            # after computing hash codes for each sample, loop over the samples and match them to neurons
             for j in bs_range:
-                hc = base2_hash[j]
+                # find current sample hash code
+                hc = hash_code[j]
+                # determine neurons which have the same hash code
                 active_neurons = hash_dict[hc]
-                # local_active_counter[j][active_neurons] += 1
+                # mark these neurons as active for the sample as well as the global counter
                 local_active_counter[j][active_neurons] = True
                 global_active_counter[active_neurons] = True
 
+            # compute how many neurons are active across the ENTIRE batch
             unique = np.count_nonzero(global_active_counter)
+
+            # once the prescribed total number of neurons are reached, end LSH
             if unique >= self.num_c_layers:
                 break
             else:
+                # store the previous list of total neurons in the case that it can be used if the next list is over the
+                # total number of neurons required (and can be randomly shaven down)
                 prev_global = np.copy(global_active_counter)
 
         # remove selected neurons (in a smart way)
@@ -126,19 +200,22 @@ class PGHash(ModelHub):
                 change = global_active_counter != prev_global
                 p = change / np.count_nonzero(change)
 
+            # randomly select neurons from most recent table to deactivate
             deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
             global_active_counter[deactivate] = False
 
             for k in bs_range:
                 # shave off deactivated neurons
-                local_active_counter[k] = local_active_counter[k] * global_active_counter
+                lac = local_active_counter[k] * global_active_counter
                 # select only active neurons for this sample
-                local_active_counter[k] = full_size[local_active_counter[k]]
+                local_active_counter[k] = full_size[lac]
 
+            # set the current active neurons across the ENTIRE batch
             self.ci = full_size[global_active_counter]
-            fake_neurons = []
             true_neurons_bool = global_active_counter
         else:
+            # in order to ensure the entire model is used (due to TF issues) we classify the true neurons and fill
+            # the rest with "fake" neurons which won't be back propagated on
             remaining_neurons = full_size[np.logical_not(global_active_counter)]
             true_neurons_bool = np.copy(global_active_counter)
             fake_neurons = remaining_neurons[:-gap]
@@ -151,14 +228,23 @@ class PGHash(ModelHub):
         # update indices with new current index
         self.bias_idx = self.ci + self.bias_start
 
-        return self.ci, local_active_counter, true_neurons_bool, fake_neurons
+        return self.ci, local_active_counter, true_neurons_bool
 
     def exchange_idx_vanilla(self, bool_idx):
+        """
+        Function sends the processes the indices each process uses in order to average correctly
+        :param bool_idx: boolean list of which neurons are active for each sample
+        :return: Time taken to perform this function
+        """
         t = time.time()
         dev_bools = np.empty((self.size, self.nl), dtype=np.bool_)
+        # send boolean list to all other processes (equivalent to central server)
         MPI.COMM_WORLD.Allgather(bool_idx, dev_bools)
+        # count how many processes had each neuron active
         count = np.sum(dev_bools, axis=0)
+        # only care about the neurons which were updated (non-updated neurons are not averaged)
         self.count = count[count > 0]
+        # keep track of all active neurons for each device
         total_active = np.zeros(self.nl, dtype=bool)
         self.device_idxs = []
         for dev in range(self.size):
@@ -172,7 +258,12 @@ class PGHash(ModelHub):
         return time.time()-t
 
     def smart_average_vanilla(self, model, ci):
-
+        """
+        Function performs averaging amongst all processes for weights which have been changed.
+        :param model: Current model for each process
+        :param ci: Current indices/neurons used within the model
+        :return: Communication time to perform the averaging
+        """
         # update the model
         self.update_full_model(model)
         comm_time = 0
@@ -191,24 +282,28 @@ class PGHash(ModelHub):
         send_final_layer = self.final_dense[:, ci]
         send_final_bias = self.full_model[self.bias_start + ci]
 
+        # create temporary matrices which will be used for finding averaged weights and biases
         updated_final_layer = np.zeros((self.hls, self.unique_len))
         updated_final_bias = np.zeros(self.unique_len)
+
+        # only update the weights and biases which were changed during last iteration
         updated_final_layer[:, self.unique_idx[self.device_idxs[self.rank]]] += send_final_layer
         updated_final_bias[self.unique_idx[self.device_idxs[self.rank]]] += send_final_bias
 
+        # send the concatenated and updated weights and biases to all processes
         send_buf = np.concatenate((updated_final_layer.flatten(), updated_final_bias))
         recv_buf = np.empty((self.hls+1) * self.unique_len)
         t = time.time()
         MPI.COMM_WORLD.Allreduce(send_buf, recv_buf, op=MPI.SUM)
         comm_time += (time.time() - t)
 
+        # reshape to receive the averaged updated weights and biases across all processes
         updated_final_layer = recv_buf[:-self.unique_len].reshape(self.hls, self.unique_len) / self.count
         updated_final_bias = recv_buf[-self.unique_len:] / self.count
 
-        # update the full model
-        # set biases
+        # update the full model: set biases
         self.full_model[self.bias_start + self.unique] = updated_final_bias
-        # set weights
+        # update the full model: set weights
         self.final_dense[:, self.unique] = updated_final_layer
         self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
 
@@ -218,7 +313,13 @@ class PGHash(ModelHub):
         return comm_time
 
     def simple_average(self, model):
-
+        """
+        Function that averages all weights, even those that were not updated. This function is not used in our work,
+        and is only a lazy approach.
+        :param model: Current model for each process
+        :return: Communication time to perform the averaging
+        """
+        # update full model
         self.update_full_model(model)
 
         # create receiving buffer
@@ -235,7 +336,13 @@ class PGHash(ModelHub):
         return toc - tic
 
     def communicate(self, model, ci, smart=True):
-
+        """
+        Function which allows for different patters of averaging (periodic averaging, etc.).
+        :param model: Current model for each process
+        :param ci: Current indices/neurons used within the model
+        :param smart: Boolean to enable smart averaging (and not lazy averaging)
+        :return:
+        """
         # have to have this here because of the case that i1 = 0 (cant do 0 % 0)
         self.iter += 1
         comm_time = 0
@@ -255,107 +362,7 @@ class PGHash(ModelHub):
                 self.iter -= 1
         return comm_time
 
-    # Below are other versions of LSH (non-vanilla)
-
-    def lsh_hamming(self, model, data, num_tables=5, cutoff=2):
-
-        # get input layer for LSH
-        feature_extractor = tf.keras.Model(
-            inputs=model.inputs,
-            outputs=model.layers[2].output,  # this is the post relu
-        )
-
-        in_layer = feature_extractor(data).numpy()
-        bs = in_layer.shape[0]
-        bs_range = np.arange(bs)
-        local_active_counter = [np.zeros(self.nl, dtype=bool) for _ in range(bs)]
-        selected_neuron_list = [[] for _ in range(bs)]
-        global_active_counter = np.zeros(self.nl, dtype=bool)
-        prev_global = None
-        thresh = 1
-
-        for i in range(num_tables):
-
-            # create gaussian matrix
-            pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
-                                                                    int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
-
-            # pg_gaussian = np.random.normal(size=(self.sdim, self.hls))
-
-            # Apply PGHash to weights.
-            hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
-
-            # Apply PG to input vector.
-            transformed_layer = np.heaviside(pg_gaussian @ in_layer.T, 0)
-
-            # convert data to base 2 to remove repeats
-            base2_hash = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
-
-            for j in bs_range:
-                hc = base2_hash[j]
-                if hc in base2_hash[:j]:
-                    # if hamming distance is already computed
-                    h_idx = np.where(base2_hash[:j] == hc)
-                    h_idx = h_idx[0][0]
-                    selected_neurons = selected_neuron_list[h_idx]
-                    local_active_counter[j][selected_neurons] = True
-                else:
-                    # compute hamming distances
-                    hamm_dists = np.count_nonzero(hash_table != transformed_layer[:, j, np.newaxis], axis=0)
-                    selected_neurons = self.full_size[hamm_dists < thresh]  # choose 2 for now
-                    selected_neuron_list[j] = selected_neurons
-                    local_active_counter[j][selected_neurons] = True
-                    global_active_counter[selected_neurons] = True
-
-            # WHAT WE CAN ALSO DO IS BUMP UP THE VALUE OF < FOR HAMMING UP UNTIL A CERTAIN AMOUNT AND THEN RERUN TABLE
-
-            unique = np.count_nonzero(global_active_counter)
-            if unique >= self.num_c_layers:
-                break
-            else:
-                prev_global = np.copy(global_active_counter)
-                # after 2 tables if haven't filled then increase the match size
-                if i == 1:
-                    thresh = cutoff
-                elif i == num_tables-2:
-                    thresh = int(self.sdim/2)
-
-        # remove selected neurons (in a smart way)
-        gap = unique - self.num_c_layers
-
-        if gap > 0:
-            if prev_global is None:
-                p = global_active_counter / unique
-            else:
-                # remove most recent selected neurons if multiple tables are used
-                change = global_active_counter != prev_global
-                p = change / np.count_nonzero(change)
-
-            deactivate = np.random.choice(self.full_size, size=gap, replace=False, p=p)
-            global_active_counter[deactivate] = False
-
-        for k in bs_range:
-            # shave off deactivated neurons
-            local_active_counter[k] = local_active_counter[k] * global_active_counter
-            # select only active neurons for this sample
-            local_active_counter[k] = self.full_size[local_active_counter[k]]
-
-        if gap >= 0:
-            self.ci = self.full_size[global_active_counter]
-            fake_neurons = None
-            true_neurons_bool = global_active_counter
-        else:
-            remaining_neurons = self.full_size[np.logical_not(global_active_counter)]
-            true_neurons_bool = np.copy(global_active_counter)
-            fake_neurons = remaining_neurons[:-gap]
-            global_active_counter[fake_neurons] = True
-            self.ci = self.full_size[global_active_counter]
-
-        # update indices with new current index
-        self.bias_idx = self.ci + self.bias_start
-
-        return self.ci, local_active_counter, true_neurons_bool, fake_neurons
-
+    # Below are other versions of LSH (non-vanilla)... THESE ARE UNUSED IN OUR CODE BUT CAN BE IMPLEMENTED
     def lsh_hamming_opt(self, model, data):
 
         # get input layer for LSH
@@ -370,10 +377,8 @@ class PGHash(ModelHub):
         cur_idx = np.empty((self.num_c_layers, bs), dtype=np.int)
 
         # create gaussian matrix
-        pg_gaussian = (1 / int(self.hls / self.sdim)) * np.tile(np.random.normal(size=(self.sdim, self.sdim)),
-                                                                int(np.ceil(self.hls / self.sdim)))[:, :self.hls]
-
-        # pg_gaussian = np.random.normal(size=(self.sdim, self.hls))
+        pg_gaussian = (1 / int(self.hls / self.c)) * np.tile(np.random.normal(size=(self.c, self.c)),
+                                                                int(np.ceil(self.hls / self.c)))[:, :self.hls]
 
         # Apply PGHash to weights.
         hash_table = np.heaviside(pg_gaussian @ self.final_dense, 0)
@@ -413,32 +418,15 @@ class PGHash(ModelHub):
 
         return self.ci, None
 
-'''
-        def exchange_idx(self):
-        t = time.time()
-        if self.rank == 0:
-            self.device_idxs = np.empty((self.size, self.num_c_layers), dtype=np.int32)
-        send_buf = -1*np.ones(self.num_c_layers, dtype=np.int32)
-        send_buf[:len(self.ci)] = self.ci
-        MPI.COMM_WORLD.Gather(send_buf, self.device_idxs, root=0)
-        if self.rank == 0:
-            temp = []
-            for dev in range(self.size):
-                dev_idx = self.device_idxs[dev, :]
-                temp.append(dev_idx[dev_idx != -1])
-            self.device_idxs = temp
-            self.unique, self.count = np.unique(np.concatenate(temp, dtype=np.int32), return_counts=True)
-            self.unique_len = len(self.unique)
-            self.unique_idx = np.empty(self.nl, dtype=np.int64)
-            self.unique_idx[self.unique] = np.arange(self.unique_len)
-            MPI.COMM_WORLD.Bcast(np.array([self.unique_len]), root=0)
-            MPI.COMM_WORLD.Bcast(self.unique, root=0)
-        else:
-            data = np.empty(1, dtype=np.int64)
-            MPI.COMM_WORLD.Bcast(data, root=0)
-            self.unique_len = data[0]
-            data = np.empty(self.unique_len, dtype=np.int32)
-            MPI.COMM_WORLD.Bcast(data, root=0)
-            self.unique = data
-        return time.time()-t
-'''
+
+def get_unique_N(iterable, N):
+    """Yields (in order) the first N unique elements of iterable.
+    Might yield less if data too short."""
+    seen = set()
+    for e in iterable:
+        if e in seen:
+            continue
+        seen.add(e)
+        yield e
+        if len(seen) == N:
+            return
