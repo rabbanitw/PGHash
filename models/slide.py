@@ -9,15 +9,29 @@ from mpi4py import MPI
 
 
 class SLIDE(ModelHub):
+    """
+    Class to apply the SLIDE algorithm to recommender systems.
+    """
 
     def __init__(self, num_labels, num_features, rank, size, influence, args):
 
         super().__init__(num_labels, num_features, args.hidden_layer_size, args.c, args.k, args.cr, rank, size,
                          influence)
+        """
+        Initializing the SLIDE class.
+        :param num_labels: Dimensionality of labels in recommender system dataset
+        :param num_features: Dimensionality of features in recommender system dataset
+        :param rank: Rank of process
+        :param size: Total number of processes
+        :param influence: The communication weighting each process is assigned (usually is uniform)
+        :param args: Remainder of arguments
+        """
 
+        # initialize parameters and lists for tables
         self.num_tables = args.num_tables
         self.gaussians = [[] for _ in range(self.num_tables)]
         self.hash_dicts = [[] for _ in range(self.num_tables)]
+        self.dwta = args.dwta
 
         # initialize full model for the root device for testing accuracy
         if self.rank == 0:
@@ -34,7 +48,17 @@ class SLIDE(ModelHub):
             # set big model weights
             self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
 
-    def test_full_model(self, test_data, acc_meter, epoch_test=True):
+    def test_full_model(self, test_data, acc_meter, epoch_test=True, num_batches=30):
+        """
+        Function which performs testing on the
+        :param test_data: Test data for recommender system
+        :param acc_meter: Accuracy meter which stores the average accuracies
+        :param epoch_test: Boolean dictating if testing is done on entire or subset of test data
+        :param num_batches: Number of batches of the test set used to evaluate the accuracy (to reduce comp. costs)
+        :return: Average test accuracy over either the entire test set or a subset of batches
+        """
+
+        # load the entire model to test on the root process
         self.big_model.set_weights(self.unflatten_weights_big(self.full_model))
         label_idx = np.arange(self.nl)
         if epoch_test:
@@ -45,7 +69,7 @@ class SLIDE(ModelHub):
                 acc_meter.update(test_acc1, test_batch)
         else:
             test_data.shuffle(len(test_data))
-            sub_test_data = test_data.take(30)
+            sub_test_data = test_data.take(num_batches)
             for (x_batch_test, y_batch_test) in sub_test_data:
                 y_pred_test = self.big_model(x_batch_test, training=False)
                 test_batch = x_batch_test.get_shape()[0]

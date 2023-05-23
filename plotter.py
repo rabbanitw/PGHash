@@ -83,9 +83,9 @@ if __name__ == '__main__':
     # specify which statistics to graph on the y-axis (will make separate plots)
     stats = 'test-acc-top1.log'
     datasets = ['Delicious200K', 'Amazon670K']
-    dataset = 'Delicious200K'
-    dataset = 'Amazon670K'
-    # dataset = 'Wiki325K'
+    # dataset = 'Delicious200K'
+    # dataset = 'Amazon670K'
+    dataset = 'Wiki325K'
 
     pg_folder = 'Output/Results/PGHash/'
     slide_folder = 'Output/Results/Slide/'
@@ -381,24 +381,24 @@ if __name__ == '__main__':
 
                 if workers == 1:
                     legend_slide = 'Single Device SLIDE'
-                    legend_pg = 'Single Device PGHash'
+                    legend_pg = 'Single Device PGHash-D'
                 else:
                     legend_slide = str(workers) + ' Device SLIDE'
-                    legend_pg = str(workers) + ' Device PGHash'
+                    legend_pg = str(workers) + ' Device PGHash-D'
 
                 plt.plot(iters_pg, test_acc_pg, label=legend_pg, color='r')
                 plt.plot(iters_slide, test_acc_slide, label=legend_slide, color='b')
 
-                plt.legend(loc='lower right')
+                plt.legend(loc='upper left')
                 plt.ylabel('Test Accuracy', fontsize=15)
                 plt.xlabel('Iterations', fontsize=15)
                 plt.xscale("log")
                 plt.grid(which="both", alpha=0.25)
                 # plt.xlim([100, 1.55e4])
                 # plt.ylim([0, 0.35])
-                plt.show()
-                savefilename = 'amazon' + str(workers) + '-comparison-c8.pdf'
-                # plt.savefig(savefilename, format="pdf")
+                # plt.show()
+                savefilename = 'wiki' + str(workers) + '-comparison-c8.pdf'
+                plt.savefig(savefilename, format="pdf")
 
     if sampled_softmax:
 

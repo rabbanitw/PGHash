@@ -244,6 +244,7 @@ class PGHash(ModelHub):
         count = np.sum(dev_bools, axis=0)
         # only care about the neurons which were updated (non-updated neurons are not averaged)
         self.count = count[count > 0]
+        # keep track of all active neurons for each device
         total_active = np.zeros(self.nl, dtype=bool)
         self.device_idxs = []
         for dev in range(self.size):
@@ -257,7 +258,12 @@ class PGHash(ModelHub):
         return time.time()-t
 
     def smart_average_vanilla(self, model, ci):
-
+        """
+        Function performs averaging amongst all processes for weights which have been changed.
+        :param model: Current model for each process
+        :param ci: Current indices/neurons used within the model
+        :return: Communication time to perform the averaging
+        """
         # update the model
         self.update_full_model(model)
         comm_time = 0
@@ -276,24 +282,28 @@ class PGHash(ModelHub):
         send_final_layer = self.final_dense[:, ci]
         send_final_bias = self.full_model[self.bias_start + ci]
 
+        # create temporary matrices which will be used for finding averaged weights and biases
         updated_final_layer = np.zeros((self.hls, self.unique_len))
         updated_final_bias = np.zeros(self.unique_len)
+
+        # only update the weights and biases which were changed during last iteration
         updated_final_layer[:, self.unique_idx[self.device_idxs[self.rank]]] += send_final_layer
         updated_final_bias[self.unique_idx[self.device_idxs[self.rank]]] += send_final_bias
 
+        # send the concatenated and updated weights and biases to all processes
         send_buf = np.concatenate((updated_final_layer.flatten(), updated_final_bias))
         recv_buf = np.empty((self.hls+1) * self.unique_len)
         t = time.time()
         MPI.COMM_WORLD.Allreduce(send_buf, recv_buf, op=MPI.SUM)
         comm_time += (time.time() - t)
 
+        # reshape to receive the averaged updated weights and biases across all processes
         updated_final_layer = recv_buf[:-self.unique_len].reshape(self.hls, self.unique_len) / self.count
         updated_final_bias = recv_buf[-self.unique_len:] / self.count
 
-        # update the full model
-        # set biases
+        # update the full model: set biases
         self.full_model[self.bias_start + self.unique] = updated_final_bias
-        # set weights
+        # update the full model: set weights
         self.final_dense[:, self.unique] = updated_final_layer
         self.full_model[self.weight_idx:self.bias_start] = self.final_dense.flatten()
 
@@ -303,7 +313,13 @@ class PGHash(ModelHub):
         return comm_time
 
     def simple_average(self, model):
-
+        """
+        Function that averages all weights, even those that were not updated. This function is not used in our work,
+        and is only a lazy approach.
+        :param model: Current model for each process
+        :return: Communication time to perform the averaging
+        """
+        # update full model
         self.update_full_model(model)
 
         # create receiving buffer
@@ -320,7 +336,13 @@ class PGHash(ModelHub):
         return toc - tic
 
     def communicate(self, model, ci, smart=True):
-
+        """
+        Function which allows for different patters of averaging (periodic averaging, etc.).
+        :param model: Current model for each process
+        :param ci: Current indices/neurons used within the model
+        :param smart: Boolean to enable smart averaging (and not lazy averaging)
+        :return:
+        """
         # have to have this here because of the case that i1 = 0 (cant do 0 % 0)
         self.iter += 1
         comm_time = 0
