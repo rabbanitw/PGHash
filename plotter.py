@@ -396,9 +396,9 @@ if __name__ == '__main__':
                 plt.grid(which="both", alpha=0.25)
                 # plt.xlim([100, 1.55e4])
                 # plt.ylim([0, 0.35])
-                # plt.show()
+                plt.show()
                 savefilename = 'wiki' + str(workers) + '-comparison-c8.pdf'
-                plt.savefig(savefilename, format="pdf")
+                # plt.savefig(savefilename, format="pdf")
 
     if sampled_softmax:
 
