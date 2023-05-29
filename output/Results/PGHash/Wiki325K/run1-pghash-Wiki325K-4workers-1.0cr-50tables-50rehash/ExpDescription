@@ -1,1 +1,1 @@
-Namespace(name='40e-pg', dataset='Wiki325K', graph_type='fully_connected', hash_type='pghash', dwta=1, randomSeed=1203, sdim=16, c=5, num_tables=50, lr=0.0001, cr=1.0, train_bs=256, test_bs=4096, steps_per_lsh=50, steps_per_test=100, epochs=40, hidden_layer_size=128)
+Namespace(name='run1', dataset='Wiki325K', graph_type='fully_connected', hash_type='pghash', dwta=1, randomSeed=1203, sdim=16, c=5, num_tables=50, lr=0.0001, cr=1.0, train_bs=256, test_bs=4096, steps_per_lsh=50, steps_per_test=100, epochs=40, hidden_layer_size=128)
