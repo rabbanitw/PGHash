@@ -116,6 +116,7 @@ if __name__ == '__main__':
     mt_colors = ['r', 'g', 'b']
 
     amz_workers = [1, 4]
+    wiki_workers = [1, 4]
 
     multi_worker_test = True
     multi_cr = False
@@ -369,36 +370,73 @@ if __name__ == '__main__':
 
     elif dataset == 'Wiki325K':
 
-        for run in range(1, 2):
-            for workers in amz_workers:
+        ntest_wiki = [1, 3]
 
-                plt.figure()
+        for i, workers in enumerate(wiki_workers):
+
+            slide_accs = []
+            slide_iters = []
+            pg_accs = []
+            pg_iters = []
+            max_iter = 29810
+            count_s = 0
+            count_p = 0
+            max_length = 0
+            nt = ntest_wiki[i]
+
+            for run in range(1, nt+1):
+
                 pg_file = 'run' + str(run) + '-pghash-' + dataset + '-' + str(workers) + 'workers-1.0cr-50tables-50rehash'
                 slide_file = 'run' + str(run) + '-slide-' + dataset + '-' + str(workers) + 'workers-1.0cr-50tables-50rehash'
 
                 test_acc_pg, iters_pg = unpack_raw_test(pg_folder + ds + pg_file)
                 test_acc_slide, iters_slide = unpack_raw_test(slide_folder + ds + slide_file)
 
-                if workers == 1:
-                    legend_slide = 'Single Device SLIDE'
-                    legend_pg = 'Single Device PGHash-D'
-                else:
-                    legend_slide = str(workers) + ' Device SLIDE'
-                    legend_pg = str(workers) + ' Device PGHash-D'
+                cutoff = np.count_nonzero(iters_pg <= max_iter)
+                slide_accs.append(test_acc_slide[:cutoff])
+                pg_accs.append(test_acc_pg[:cutoff])
+                # store lengths because similar accs are not stored, so arrays ragged
+                if cutoff > max_length:
+                    max_length = cutoff
+                    iters = iters_pg[:cutoff]
 
-                plt.plot(iters_pg, test_acc_pg, label=legend_pg, color='r')
-                plt.plot(iters_slide, test_acc_slide, label=legend_slide, color='b')
+            # fix raggedness due to flatline accuracy
+            for run in range(nt):
+                if len(pg_accs[run]) < max_length:
+                    diff = max_length - len(pg_accs[run])
+                    pg_accs[run] = np.insert(pg_accs[run], 1, [pg_accs[run][0]]*diff)
+                if len(slide_accs[run]) < max_length:
+                    diff = max_length - len(slide_accs[run])
+                    slide_accs[run] = np.insert(slide_accs[run], 1, [slide_accs[run][0]]*diff)
 
-                plt.legend(loc='upper left')
-                plt.ylabel('Test Accuracy', fontsize=15)
-                plt.xlabel('Iterations', fontsize=15)
-                plt.xscale("log")
-                plt.grid(which="both", alpha=0.25)
-                # plt.xlim([100, 1.55e4])
-                # plt.ylim([0, 0.35])
-                plt.show()
-                savefilename = 'wiki' + str(workers) + '-comparison-c8.pdf'
-                # plt.savefig(savefilename, format="pdf")
+            pg_accs = np.stack(pg_accs, axis=0)
+            slide_accs = np.stack(slide_accs, axis=0)
+            y_mean_p, y_min_p, y_max_p = generate_confidence_interval(pg_accs)
+            y_mean_s, y_min_s, y_max_s = generate_confidence_interval(slide_accs)
+
+            if workers == 1:
+                legend_slide = 'Single Device SLIDE'
+                legend_pg = 'Single Device PGHash-D'
+            else:
+                legend_slide = str(workers) + ' Device SLIDE'
+                legend_pg = str(workers) + ' Device PGHash-D'
+
+            plt.figure()
+            plt.plot(iters, y_mean_p, label=legend_pg, color='r')
+            plt.fill_between(iters, y_min_p, y_max_p, alpha=0.2, color='r')
+            plt.plot(iters, y_mean_s, label=legend_slide, color='b')
+            plt.fill_between(iters, y_min_s, y_max_s, alpha=0.2, color='b')
+
+            plt.legend(loc='upper left')
+            plt.ylabel('Test Accuracy', fontsize=15)
+            plt.xlabel('Iterations', fontsize=15)
+            plt.xscale("log")
+            plt.grid(which="both", alpha=0.25)
+            # plt.xlim([100, 1.55e4])
+            # plt.ylim([0, 0.35])
+            # plt.show()
+            savefilename = 'wiki' + str(workers) + '-comparison-c8.pdf'
+            plt.savefig(savefilename, format="pdf")
 
     if sampled_softmax:
 
