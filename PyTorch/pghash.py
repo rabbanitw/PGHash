@@ -64,7 +64,7 @@ class PGHash(ModelHub):
                 acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
 
-    def test_accuracy(self, model, device, test_data_loader, running_accuracy, test_batches=30, epoch=False):
+    def test_accuracy(self, model, device, test_data_loader, running_accuracy, test_batches=200, epoch=False):
         running_accuracy.reset()
         j = 0
         with torch.no_grad():

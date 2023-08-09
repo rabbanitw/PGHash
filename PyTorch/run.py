@@ -32,7 +32,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=int, default=1e-4)
     parser.add_argument('--cr', type=float, default=1)
     parser.add_argument('--train_bs', type=int, default=128)
-    parser.add_argument('--test_bs', type=int, default=4096)
+    parser.add_argument('--test_bs', type=int, default=128)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
     parser.add_argument('--steps_per_test', type=int, default=100)
     parser.add_argument('--epochs', type=int, default=10)
