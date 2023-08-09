@@ -179,6 +179,8 @@ def gpu_pghashd_lsh(device, weights, k, slide=False):
         # determine the random coordinates
         permutation = np.random.choice(weights.shape[0], k, replace=False)
         weights = weights[permutation, :]
+    else:
+        permutation = None
 
     weights = weights.to(device)
     empty_bins = torch.count_nonzero(weights, dim=0) == 0
@@ -205,4 +207,4 @@ def gpu_pghashd_lsh(device, weights, k, slide=False):
     # make the dictionary contain numpy arrays and not a list (for faster slicing)
     for key in hash_dict:
         hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
-    return hash_dict
+    return hash_dict, permutation

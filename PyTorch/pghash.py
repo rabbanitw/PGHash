@@ -109,9 +109,12 @@ class PGHash(ModelHub):
                 else:
                     perm_weight = self.model.linear2.weight.t()
                 # run PGHash-D LSH
-                hash_dict = gpu_pghashd_lsh(self.device2, perm_weight, self.k, slide=self.slide)
+                hash_dict, perm2 = gpu_pghashd_lsh(self.device2, perm_weight, self.k, slide=self.slide)
                 # save the permutation list in local memory (small memory cost) and hash tables
-                self.SB[i] = perm
+                if not self.slide:
+                    self.SB[i] = perm
+                else:
+                    self.SB[i] = perm2
                 self.hash_dicts[i] = hash_dict
         else:
             for i in range(self.num_tables):
