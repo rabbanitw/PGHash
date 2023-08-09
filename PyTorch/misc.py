@@ -2,7 +2,6 @@ import torch
 import numpy as np
 import os
 import shutil
-from itertools import product
 
 
 def top1acc(y_pred, y_true):
@@ -12,54 +11,6 @@ def top1acc(y_pred, y_true):
         if y_true[i, idx]:
             count += 1
     return count / len(top)
-
-    '''
-    def compute_accuracy_lsh(y_pred, y_true, lsh_idx, num_l, topk=1
-    val, result_idx = torch.topk(y_pred, k=topk)
-    batches, _ = y_pred.shape
-    true_rows = y_true.crow_indices().detach().cpu().numpy()
-    true_cols = y_true.col_indices().detach().cpu().numpy()
-    true_idx_vals = true_cols
-    row_val = 0
-    idx = 0
-    for val in true_rows[1:]:
-        true_idx_vals[idx:val] += row_val
-        row_val += num_l
-        idx = val
-    count = 0
-    for i in range(topk):
-        pre_transform_y = result_idx[:, i]
-        pred_idx_vals = lsh_idx[pre_transform_y] + np.arange(batches) * num_l
-        count += len(np.intersect1d(true_idx_vals, pred_idx_vals, assume_unique=True))
-    return count/(batches*topk)
-    '''
-
-
-def find_topk(input, k, axis=1, ascending=False):
-    if not ascending:
-        input *= -1
-    ind = np.argpartition(input, k, axis=axis)
-    ind = np.take(ind, np.arange(k), axis=axis)  # k non-sorted indices
-    input = np.take_along_axis(input, ind, axis=axis)  # k non-sorted values
-    # sort within k elements
-    ind_part = np.argsort(input, axis=axis)
-    ind = np.take_along_axis(ind, ind_part, axis=axis)
-    return ind
-
-
-def get_ham_dist_dict(k):
-    x = [i for i in product(range(2), repeat=k)]
-    x = np.array(x).T
-    base2_hash = x.T.dot(1 << np.arange(x.T.shape[-1]))
-    outer_dict = {}
-    for hash_num in range(x.shape[1]):
-        hash = x[:, hash_num, np.newaxis]
-        hamm_dists = np.count_nonzero(x != hash, axis=0).astype(np.int)
-        inner_dict = {}
-        for i in range(len(hamm_dists)):
-            inner_dict[base2_hash[i]] = hamm_dists[i]
-        outer_dict[base2_hash[hash_num]] = inner_dict
-    return outer_dict
 
 
 class AverageMeter(object):

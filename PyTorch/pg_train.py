@@ -38,7 +38,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
     for epoch in range(1, args.epochs+1):
         print("\nStart of epoch %d" % (epoch,))
 
-        for train_data, train_labels in train_dl:
+        for data, labels in train_dl:
 
             # compute LSH
             lsh_init = time.time()
@@ -61,20 +61,19 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
                 total_neruons += len(sample_active_idx[i])
             average_active_per_sample = total_neruons/batch_size
 
-            train_data = train_data.to(device)
-            train_labels = train_labels.to(device)
-            y_true = train_labels.to_dense()
+            data = data.to(device)
+            labels = labels.to(device)
+            # shorten the true label
+            labels = labels[:, active_idx]
+            labels = labels.to_dense().to(device)
 
             '''
             # compute test accuracy every X steps
             if iterations % args.steps_per_test == 0:
-                if rank == 0:
-                    Method.update_full_model(Method.model)
-                    test_acc = Method.test_full_model(test_data, test_acc_metric, epoch_test=False)
-                    print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
-                    recorder.add_testacc(test_acc)
-                    test_acc_metric.reset()
-                MPI.COMM_WORLD.Barrier()
+                test_acc = Method.test_accuracy(Method.model, device, test_dl, test_acc_metric, epoch_test=False)
+                print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
+                recorder.add_testacc(test_acc)
+                test_acc_metric.reset()
             '''
 
             init_time = time.time()
@@ -91,16 +90,13 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             active_mask = torch.from_numpy(mask).to(device)
             softmax_mask = torch.where(active_mask == 1, 0., torch.tensor(-1e15)).to(device)
 
-            # shorten the true label
-            y_true = y_true[:, active_idx]
-
             # perform gradient update, using only ACTIVE neurons as part of sum
-            y_pred = Method.model(train_data)
+            y_pred = Method.model(data)
             y_pred = torch.add(y_pred, softmax_mask)
             log_sm = torch.nn.functional.log_softmax(y_pred, dim=1)
             # zero out non-active neurons for each sample
             log_sm = torch.multiply(log_sm, active_mask)
-            smce = torch.multiply(log_sm, y_true)
+            smce = torch.multiply(log_sm, labels)
             loss = -torch.mean(torch.sum(smce, 1, keepdim=True))
 
             loss.backward()
@@ -111,7 +107,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             # compute accuracy (top 1) and loss for the minibatch
             rec_init = time.time()
             losses.update(np.array(loss_val), batch_size)
-            acc1 = top1acc(y_pred[:, active_idx], y_true)
+            acc1 = top1acc(y_pred[:, active_idx], labels)
 
             train_acc_metric.update(acc1, batch_size)
             record_time = time.time() - rec_init

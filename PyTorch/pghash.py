@@ -62,24 +62,28 @@ class PGHash(ModelHub):
                 acc_meter.update(test_acc1, test_batch)
         return acc_meter.avg
 
-    def test_accuracy(self, model, device, test_data_loader, running_accuracy, test_batches, epoch=False):
+    def test_accuracy(self, model, device, test_data_loader, running_accuracy, test_batches=30, epoch=False):
         running_accuracy.reset()
         j = 0
         with torch.no_grad():
-            for samples, labels in test_data_loader:
+            for data, labels in test_data_loader:
 
                 if j == test_batches and not epoch:
                     break
                 j += 1
 
                 # add data to model
-                samples = samples.to(device)
-                batches, n = labels.shape
+                batches, _ = labels.shape
+                data = data.to(device)
+                labels = labels.to(device)
 
                 # Forward pass
-                outputs = model(samples)
+                outputs = model(data)
 
-                # running_accuracy.update(acc / batches, batches)
+                # compute accuracy
+                acc = top1acc(outputs, labels)
+
+                running_accuracy.update(acc / batches, batches)
 
 
     def rehash(self):
