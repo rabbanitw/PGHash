@@ -110,12 +110,8 @@ if __name__ == '__main__':
 
     # select method used and begin training once all devices are ready
     print('Initializing model...')
-    if method == 'PGHash':
-        Method = PGHash(nc, nf, rank, size, 1 / size, device, device2, args, slide=slide)
-        optimizer = torch.optim.Adam(Method.model.parameters(), lr=args.lr)
-        MPI.COMM_WORLD.Barrier()
-        pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, top1, test_top1, recorder, args)
+    Method = PGHash(nc, nf, rank, size, 1 / size, device, device2, args, slide=slide)
+    optimizer = torch.optim.Adam(Method.model.parameters(), lr=args.lr)
+    MPI.COMM_WORLD.Barrier()
+    pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, top1, test_top1, recorder, args)
 
-    else:
-        print('ERROR: No Method Selected')
-        exit()
