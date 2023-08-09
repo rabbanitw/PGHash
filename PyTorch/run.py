@@ -55,10 +55,10 @@ if __name__ == '__main__':
         dev = ["cuda:" + str(i) for i in range(num_gpus)]
     else:
         num_gpus = 0
-        dev = "cpu"
+        dev = ["cpu"]
 
     if num_gpus < 2:
-        device = torch.device(dev)
+        device = torch.device(dev[0])
         device2 = device
     else:
         device = torch.device(dev[0])

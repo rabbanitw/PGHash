@@ -23,7 +23,7 @@ class PGHash(ModelHub):
         """
 
         # inherit the general Base class (which deals with updating the model dynamically)
-        super().__init__(num_labels, num_features, args.hidden_layer_size, args.c, args.k, args.cr, rank, size,
+        super().__init__(device, num_labels, num_features, args.hidden_layer_size, args.c, args.k, args.cr, rank, size,
                          influence)
 
         # initialize parameters and lists for tables
@@ -125,6 +125,7 @@ class PGHash(ModelHub):
         """
 
         # get input layer for LSH using current model
+        data = data.to(self.device)
         in_layer = model.hidden_forward(data).detach().cpu().numpy()
 
         # find batch size and initialize parameters

@@ -48,9 +48,10 @@ def gpu_pghash_lsh(device, weights, n, k, c):
     # create gaussian matrix=
     pg_gaussian = (1 / int(n / c)) * torch.tile(torch.normal(0, 1, size=(k, c)), (1, int(math.ceil(n / c))))[:, :n]
     pg_gaussian = pg_gaussian.to(device)
+    weights = weights.to(device)
 
     # Apply PGHash to weights.
-    hash_table = torch.heaviside(pg_gaussian@weights, torch.tensor([0.])).detach().cpu().numpy()
+    hash_table = torch.heaviside(pg_gaussian@weights, torch.tensor([0.]).to(device)).detach().cpu().numpy()
 
     # convert to base 2
     hash_table = hash_table.T.dot(1 << np.arange(hash_table.T.shape[-1]))

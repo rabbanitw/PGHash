@@ -8,7 +8,7 @@ class ModelHub:
     This class performs all the vital dynamic model updates for SLIDE and PGHash to work in TF.
     """
 
-    def __init__(self, num_labels, num_features, hidden_layer_size, c, k, cr, rank, size, influence, i1=0, i2=1,
+    def __init__(self, device, num_labels, num_features, hidden_layer_size, c, k, cr, rank, size, influence, i1=0, i2=1,
                  sampled_softmax=0, ss_frac=0.1):
         """
         Initializes the base model hub class.
@@ -61,5 +61,7 @@ class ModelHub:
         # use sampled softmax network if enabled
         if not sampled_softmax:
             self.model = SparseNN(self.nf, self.hls, self.nl)
+            self.model = self.model.to(device)
+
         else:
             exit()
