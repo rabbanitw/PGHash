@@ -11,7 +11,7 @@ class PGHash(ModelHub):
     Class to apply our PGHash(-D) algorithm to recommender systems.
     """
 
-    def __init__(self, num_labels, num_features, rank, size, influence, device, device2, args):
+    def __init__(self, num_labels, num_features, rank, size, influence, device, device2, args, slide=False):
         """
         Initializing the PGHash class.
         :param num_labels: Dimensionality of labels in recommender system dataset
@@ -33,6 +33,7 @@ class PGHash(ModelHub):
         self.dwta = args.dwta
         self.device = device
         self.device2 = device2
+        self.slide = slide
 
     def test_full_model(self, test_data, acc_meter, epoch_test=True, num_batches=30):
         """
@@ -99,15 +100,17 @@ class PGHash(ModelHub):
             # create list of possible coordinates to randomly select for DWTA
             potential_indices = np.arange(self.hls)
             for i in range(self.num_tables):
-                # server randomly selects coordinates for DWTA (stored as permutation list), vector is dimension c
-                indices = np.random.choice(potential_indices, self.c, replace=False)
-                # process selects a k-subset of the c coordinates to use for on-device DWTA
-                perm = np.random.choice(indices, self.k, replace=False)
-                # index the k coordinates for each neuron (size is k x n)
-                perm_weight = self.model.linear2.weight.t()[perm, :]
-                # perm_weight = self.final_dense[perm, :]
+                if not self.slide:
+                    # server randomly selects coordinates for DWTA (stored as permutation list), vector is dimension c
+                    indices = np.random.choice(potential_indices, self.c, replace=False)
+                    # process selects a k-subset of the c coordinates to use for on-device DWTA
+                    perm = np.random.choice(indices, self.k, replace=False)
+                    # index the k coordinates for each neuron (size is k x n)
+                    perm_weight = self.model.linear2.weight.t()[perm, :]
+                else:
+                    perm_weight = self.model.linear2.weight.t()
                 # run PGHash-D LSH
-                hash_dict = gpu_pghashd_lsh(self.device2, perm_weight, self.k)
+                hash_dict = gpu_pghashd_lsh(self.device2, perm_weight, self.k, slide=self.slide)
                 # save the permutation list in local memory (small memory cost) and hash tables
                 self.SB[i] = perm
                 self.hash_dicts[i] = hash_dict

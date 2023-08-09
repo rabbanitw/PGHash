@@ -100,18 +100,11 @@ if __name__ == '__main__':
     if args.hash_type[:2] == 'pg':
         method = 'PGHash'
         cr = args.cr
-    elif args.hash_type[:3] == 'reg':
-        method = 'Regular'
-        cr = 1
-    elif args.hash_type[:6] == 'ss-reg':
-        method = 'Regular-SS'
-        cr = 1
-    elif args.hash_type[:5] == 'dense':
-        method = 'Regular'
-        cr = 1
+        slide = False
     else:
         method = 'SLIDE'
         cr = 1
+        slide = True
 
     # load (large) dataset
     print('Loading and partitioning data...')
@@ -127,7 +120,7 @@ if __name__ == '__main__':
     # select method used and begin training once all devices are ready
     print('Initializing model...')
     if method == 'PGHash':
-        Method = PGHash(nc, nf, rank, size, 1 / size, device, device2, args)
+        Method = PGHash(nc, nf, rank, size, 1 / size, device, device2, args, slide=slide)
         optimizer = torch.optim.Adam(Method.model.parameters(), lr=args.lr)
         MPI.COMM_WORLD.Barrier()
         pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, top1, test_top1, recorder, args)

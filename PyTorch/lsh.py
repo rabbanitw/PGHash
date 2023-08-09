@@ -167,13 +167,19 @@ def pghashd_lsh(weights, k):
     return hash_dict
 
 
-def gpu_pghashd_lsh(device, weights, k):
+def gpu_pghashd_lsh(device, weights, k, slide=False):
     """
         Performs end of PGHash-D hashing scheme.
         :param weights: Entire final layer weights
         :param k: Hash length
         :return: Buckets (dictionary) for neurons
         """
+
+    if slide:
+        # determine the random coordinates
+        permutation = np.random.choice(weights.shape[0], k, replace=False)
+        weights = weights[permutation, :]
+
     weights = weights.to(device)
     empty_bins = torch.count_nonzero(weights, dim=0) == 0
     empty_bins = empty_bins.detach().cpu().numpy()
