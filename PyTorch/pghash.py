@@ -84,7 +84,6 @@ class PGHash(ModelHub):
 
                 # compute accuracy
                 acc = top1acc(outputs, labels)
-                acc = acc.detach().cpu().numpy()
 
                 running_accuracy.update(acc / batches, batches)
 
