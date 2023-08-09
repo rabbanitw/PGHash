@@ -66,15 +66,13 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             labels = labels.to_dense()
             labels = labels[:, active_idx].to(device)
 
-            # '''
             # compute test accuracy every X steps
             if iterations % args.steps_per_test == 0:
                 Method.test_accuracy(Method.model, device, test_dl, test_acc_metric, epoch=False)
-                test_acc = test_acc_metric.avg()
+                test_acc = test_acc_metric.avg
                 print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                 recorder.add_testacc(test_acc)
                 test_acc_metric.reset()
-            # '''
 
             init_time = time.time()
 
