@@ -83,9 +83,9 @@ if __name__ == '__main__':
     # specify which statistics to graph on the y-axis (will make separate plots)
     stats = 'test-acc-top1.log'
     datasets = ['Delicious200K', 'Amazon670K']
-    # dataset = 'Delicious200K'
+    dataset = 'Delicious200K'
     # dataset = 'Amazon670K'
-    dataset = 'Wiki325K'
+    # dataset = 'Wiki325K'
 
     pg_folder = 'output/Results/PGHash/'
     slide_folder = 'output/Results/Slide/'
@@ -108,6 +108,10 @@ if __name__ == '__main__':
     mw_labels_pg = ['Single Device PGHash', '4 Device PGHash', '8 Device PGHash']
     mw_labels_slide = ['Single Device SLIDE', '4 Device SLIDE', '8 Device SLIDE']
     mw_labels_dense = ['Single Device FedAvg', '4 Device FedAvg', '8 Device FedAvg']
+
+    mw_workers = [4]
+    mw_labels_pg = ['4 Device PGHash', 'Single Device PGHash']
+    mw_labels_slide = ['4 Device SLIDE', 'Single Device SLIDE']
 
     mt_crs = [0.1, 0.25, 0.5, 1.0]
     mt_workers = [1]
@@ -141,10 +145,12 @@ if __name__ == '__main__':
                 dense_accs = []
                 pg_accs = []
                 dense_iters = []
-                max_iters = 4.05e3
+                # max_iters = 4.05e3
+                max_iters = 9e3
+                ntest = 3
                 cutoff = 0
 
-                for trial in range(1, ntest + 1):
+                for trial in range(3, ntest + 1):
 
                     pg_file = 'run' + str(trial) + '-pghash-' + dataset + '-' + str(nw) + 'workers-' + str(cr) + 'cr-' \
                               + str(pg_tables) + 'tables-' + str(mw_rehash) + 'rehash'
@@ -165,6 +171,7 @@ if __name__ == '__main__':
                     pg_accs.append(test_acc_pg)
                     dense_iters.append(iters_dense)
 
+                '''
                 for trial in range(0, ntest):
                     slide_accs[trial] = slide_accs[trial][:cutoff]
                     dense_accs[trial] = dense_accs[trial][:cutoff]
@@ -174,6 +181,8 @@ if __name__ == '__main__':
                         pg_accs[trial] = np.append(pg_accs[trial], np.mean(np.array([pg_accs[trial-2][lp:cutoff],
                                                                                      pg_accs[trial-1][lp:cutoff]]),
                                                                            axis=0))
+                '''
+
                 iters = iters_pg[:cutoff]
 
                 slide_accs = np.stack(slide_accs, axis=0)
@@ -186,32 +195,35 @@ if __name__ == '__main__':
 
                 y_mean_s, y_min_s, y_max_s = generate_confidence_interval(slide_accs)
                 y_mean_p, y_min_p, y_max_p = generate_confidence_interval(pg_accs)
-                y_mean_d, y_min_d, y_max_d = generate_confidence_interval(dense_accs)
+                # y_mean_d, y_min_d, y_max_d = generate_confidence_interval(dense_accs)
 
                 plt.figure()
 
-                plt.plot(iters, y_mean_p, label=mw_labels_pg[j], color='r')
-                plt.fill_between(iters, y_min_p, y_max_p, alpha=0.2, color='r')
-                plt.plot(iters, y_mean_s, label=mw_labels_slide[j], color='b')
-                plt.fill_between(iters, y_min_s, y_max_s, alpha=0.2, color='b')
+                plt.plot(iters_pg, y_mean_p, label=mw_labels_pg[j], color='r')
+                plt.fill_between(iters_pg, y_min_p, y_max_p, alpha=0.2, color='r')
+                plt.plot(iters_slide, y_mean_s, label=mw_labels_slide[j], color='b')
+                plt.fill_between(iters_slide, y_min_s, y_max_s, alpha=0.2, color='b')
 
+                '''
                 if nw != 8:
                     plt.plot(iters, y_mean_d, label=mw_labels_dense[j], color='g')
                     plt.fill_between(iters, y_min_d, y_max_d, alpha=0.2, color='g')
                 else:
                     plt.plot(dense_iters[0], y_mean_d, label=mw_labels_dense[j], color='g')
                     plt.fill_between(dense_iters[0], y_min_d, y_max_d, alpha=0.2, color='g')
+                '''
 
                 plt.legend(loc='lower right')
                 plt.ylabel('Test Accuracy', fontsize=15)
                 plt.xlabel('Iterations', fontsize=15)
                 plt.xscale("log")
-                plt.xlim([1e2, 4e3])
+                # plt.xlim([1e2, 4e3])
+                plt.xlim([1e2, 9e3])
                 plt.ylim([0.225, 0.48])
                 plt.grid(which="both", alpha=0.25)
-                # plt.show()
+                plt.show()
                 savefilename = 'multiworker' + str(nw) + '-' + str(mw_rehash) + 'rehash' + '.pdf'
-                plt.savefig(savefilename, format="pdf")
+                # plt.savefig(savefilename, format="pdf")
         elif multi_cr:
             for j in range(len(sw_crs)):
 
