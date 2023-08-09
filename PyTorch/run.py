@@ -6,15 +6,6 @@ from misc import AverageMeter, Recorder
 from pghash import PGHash
 from pg_train import pg_train
 
-'''
-from models.slide import SLIDE
-from models.dense import Dense
-from train.pg_train import pg_train
-from train.regular_train import regular_train
-from train.regular_train_ss import regular_train_ss
-from train.slide_train import slide_train
-'''
-
 
 if __name__ == '__main__':
 
@@ -34,7 +25,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_bs', type=int, default=128)
     parser.add_argument('--test_bs', type=int, default=128)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
-    parser.add_argument('--steps_per_test', type=int, default=100)
+    parser.add_argument('--steps_per_test', type=int, default=500)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
 
