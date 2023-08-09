@@ -85,7 +85,7 @@ class PGHash(ModelHub):
                 # compute accuracy
                 acc = top1acc(outputs, labels)
 
-                running_accuracy.update(acc / batches, batches)
+                running_accuracy.update(acc, batches)
 
 
     def rehash(self):
@@ -138,7 +138,9 @@ class PGHash(ModelHub):
 
         # get input layer for LSH using current model
         data = data.to(self.device)
-        in_layer = model.hidden_forward(data).detach().cpu().numpy()
+        with torch.no_grad():
+            in_layer = model.hidden_forward(data)
+            in_layer = in_layer.detach().cpu().numpy()
 
         # find batch size and initialize parameters
         bs = in_layer.shape[0]
