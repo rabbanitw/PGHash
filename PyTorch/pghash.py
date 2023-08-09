@@ -1,7 +1,7 @@
 import numpy as np
 from base import ModelHub
 from misc import top1acc
-from lsh import pghash_lsh, pghashd_lsh, gpu_pghash_lsh
+from lsh import pghash_lsh, pghashd_lsh, gpu_pghash_lsh, gpu_pghashd_lsh
 import torch
 import time
 
@@ -98,9 +98,10 @@ class PGHash(ModelHub):
                 # process selects a k-subset of the c coordinates to use for on-device DWTA
                 perm = np.random.choice(indices, self.k, replace=False)
                 # index the k coordinates for each neuron (size is k x n)
-                perm_weight = self.final_dense[perm, :]
+                perm_weight = self.model.linear2.weight.t()[perm, :]
+                # perm_weight = self.final_dense[perm, :]
                 # run PGHash-D LSH
-                hash_dict = pghashd_lsh(perm_weight, self.k)
+                hash_dict = gpu_pghashd_lsh(perm_weight, self.k)
                 # save the permutation list in local memory (small memory cost) and hash tables
                 self.SB[i] = perm
                 self.hash_dicts[i] = hash_dict

@@ -88,8 +88,8 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
                 mask[j, sample_active_idx[j]] = 1
             mask = mask[:, active_idx]
 
-            active_mask = torch.from_numpy(mask)
-            softmax_mask = torch.where(active_mask == 1, 0., torch.tensor(-1e15))
+            active_mask = torch.from_numpy(mask).to(device)
+            softmax_mask = torch.where(active_mask == 1, 0., torch.tensor(-1e15)).to(device)
 
             # shorten the true label
             y_true = y_true[:, active_idx]
