@@ -33,6 +33,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
     comm_time1 = 0
     num_labels = Method.nl
     steps_per_rehash = args.steps_per_lsh
+    idx = np.arange(num_labels)
 
     # begin training below
     for epoch in range(1, args.epochs+1):
@@ -50,6 +51,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             # active neuron selection step: each sample in batch is hashed and the resulting hash code is used
             # to select which neurons will be activated (exact matches -- vanilla style)
             active_idx, sample_active_idx, true_neurons_bool = Method.lsh_vanilla(Method.model, data)
+            non_active_idx = idx[~true_neurons_bool]
 
             lsh_time = time.time() - lsh_init
 
@@ -90,6 +92,8 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
 
             # perform gradient update, using only ACTIVE neurons as part of sum
             y_pred = Method.model(data)
+            # stop gradient backprop to non-active neurons
+            y_pred[:, non_active_idx] = y_pred[:, non_active_idx].detach()
             y_pred = torch.add(y_pred, softmax_mask)
             log_sm = torch.nn.functional.log_softmax(y_pred, dim=1)
             # zero out non-active neurons for each sample

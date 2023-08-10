@@ -5,6 +5,7 @@ from mpi4py import MPI
 from misc import AverageMeter, Recorder
 from pghash import PGHash
 from pg_train import pg_train
+import numpy as np
 
 
 if __name__ == '__main__':
@@ -39,6 +40,7 @@ if __name__ == '__main__':
     # set random seed
     randomSeed = args.randomSeed
     torch.manual_seed(randomSeed)
+    np.random.seed(randomSeed)
 
     # determine torch device available (default to GPU if available)
     if torch.cuda.is_available():
