@@ -86,7 +86,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             mask = mask[:, active_idx]
 
             active_mask = torch.from_numpy(mask).to(device)
-            softmax_mask = torch.where(active_mask == 1, 0., torch.tensor(-1e15)).to(device)
+            softmax_mask = torch.where(active_mask == 1, 0., torch.tensor(-1e20)).to(device)
 
             # perform gradient update, using only ACTIVE neurons as part of sum
             y_pred = Method.model(data)
@@ -118,7 +118,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
 
             # log every X batches
             total_batches += batch_size
-            if iterations % 5 == 0:
+            if iterations % 50 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Comm Time %f, LSH Time %f, Loss %.6f, Top 1 Train Accuracy %.4f,"
                     " Average Active Neurons %d, [%d Total Samples]" % (rank, iterations,
@@ -127,6 +127,12 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
                                                                         average_active_per_sample, total_batches)
                 )
             iterations += 1
+
+        Method.test_accuracy(Method.model, device, test_dl, test_acc_metric, epoch=True)
+        test_acc = test_acc_metric.avg
+        print("Step %d: Top 1 Test Accuracy %.4f" % (iterations - 1, test_acc))
+        # recorder.add_testacc(test_acc)
+        test_acc_metric.reset()
 
         # reset accuracy statistics for next epoch
         train_acc_metric.reset()
