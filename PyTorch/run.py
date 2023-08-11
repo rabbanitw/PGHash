@@ -40,7 +40,6 @@ if __name__ == '__main__':
     np.random.seed(randomSeed)
     random.seed(randomSeed)
     torch.backends.cudnn.benchmark = False
-    torch.use_deterministic_algorithms(True)
 
     # determine torch device available (default to GPU if available)
     if torch.cuda.is_available():

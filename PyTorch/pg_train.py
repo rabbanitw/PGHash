@@ -153,4 +153,3 @@ def pg_train(rank, model, Method, device, optimizer, train_dl, test_dl, losses, 
         # reset accuracy statistics for next epoch
         train_acc_metric.reset()
         losses.reset()
-        MPI.COMM_WORLD.Barrier()
