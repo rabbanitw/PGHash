@@ -101,6 +101,10 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             # zero out non-active neurons for each sample
             log_sm = torch.multiply(log_sm, active_mask)
             smce = torch.multiply(log_sm, labels)
+
+            # stop gradient
+            smce.register_hook(lambda grad: grad * active_mask)
+
             loss = -torch.mean(torch.sum(smce, 1, keepdim=True))
 
             loss.backward()
