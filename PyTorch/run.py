@@ -1,12 +1,12 @@
 import torch
 import argparse
 from dataloader import data_generator_csr
-from mpi4py import MPI
 from misc import AverageMeter, Recorder
 from pghash import PGHash
 from pg_train import pg_train
 import numpy as np
 import random
+from network import SparseNN, SimpleNN
 
 
 if __name__ == '__main__':
@@ -33,10 +33,6 @@ if __name__ == '__main__':
 
     # parse the argument
     args = parser.parse_args()
-
-    # mpi info
-    rank = MPI.COMM_WORLD.Get_rank()
-    size = MPI.COMM_WORLD.Get_size()
 
     # set random seed
     randomSeed = args.randomSeed
@@ -110,12 +106,14 @@ if __name__ == '__main__':
     top1 = AverageMeter()
     test_top1 = AverageMeter()
     losses = AverageMeter()
-    recorder = Recorder('../output', MPI.COMM_WORLD.Get_size(), rank, args)
+    recorder = Recorder('../output', 1, 0, args)
 
     # select method used and begin training once all devices are ready
     print('Initializing model...')
-    Method = PGHash(nc, nf, rank, size, 1 / size, device, device2, args, slide=slide)
-    optimizer = torch.optim.Adam(Method.model.parameters(), lr=args.lr)
-    MPI.COMM_WORLD.Barrier()
-    pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, top1, test_top1, recorder, args)
+    Method = PGHash(nc, nf, 0, 1, 1, device, args, slide=slide)
+    # model = SparseNN(nf, hls, nc)
+    model = SimpleNN(nf, hls, nc)
+    model = model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    pg_train(0, model, Method, device, optimizer, train_dl, test_dl, losses, top1, test_top1, recorder, args)
 

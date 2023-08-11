@@ -1,6 +1,4 @@
 import numpy as np
-from network import SparseNN
-from mpi4py import MPI
 
 
 class ModelHub:
@@ -57,11 +55,3 @@ class ModelHub:
         # initialize the start of the compressed network weights and the total number of compressed labels
         self.num_c_layers = int(self.cr * self.nl)
         self.weight_idx = (self.nf * self.hls) + self.hls
-
-        # use sampled softmax network if enabled
-        if not sampled_softmax:
-            self.model = SparseNN(self.nf, self.hls, self.nl)
-            self.model = self.model.to(device)
-
-        else:
-            exit()

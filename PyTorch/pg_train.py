@@ -2,10 +2,9 @@ import numpy as np
 import torch
 import time
 from misc import top1acc
-from mpi4py import MPI
 
 
-def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_acc_metric, test_acc_metric,
+def pg_train(rank, model, Method, device, optimizer, train_dl, test_dl, losses, train_acc_metric, test_acc_metric,
              recorder, args):
     """
     pg_train: This function orchestrates distributed training of large-scale recommender system training via our
@@ -51,7 +50,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
 
             # active neuron selection step: each sample in batch is hashed and the resulting hash code is used
             # to select which neurons will be activated (exact matches -- vanilla style)
-            active_idx, sample_active_idx, true_neurons_bool = Method.lsh_vanilla(Method.model, data)
+            active_idx, sample_active_idx, true_neurons_bool = Method.lsh_vanilla(model, data)
 
             lsh_time = time.time() - lsh_init
 
@@ -65,7 +64,6 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             '''
 
             data = data.to(device)
-            # shorten the true label
             labels = labels.to_dense().to(device)
 
             batch_size, _ = labels.shape
@@ -73,17 +71,15 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             average_active_per_sample = 0
             num_active_neurons = 0
 
-
             # compute test accuracy every X steps
             if iterations % args.steps_per_test == 0:
-                Method.test_accuracy(Method.model, device, test_dl, test_acc_metric, epoch=False)
+                Method.test_accuracy(model, device, test_dl, test_acc_metric, epoch=False)
                 test_acc = test_acc_metric.avg
                 print("Step %d: Top 1 Test Accuracy %.4f" % (iterations-1, test_acc))
                 recorder.add_testacc(test_acc)
                 test_acc_metric.reset()
 
             init_time = time.time()
-
 
             '''
             # create a mask to ensure only the active neurons for each sample are used & updated during training
@@ -96,7 +92,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             softmax_mask = torch.where(active_mask == 1, 0., torch.tensor(-1e20)).to(device)
 
             # perform gradient update, using only ACTIVE neurons as part of sum
-            y_pred = Method.model(data)
+            y_pred = model(data)
             # stop gradient backprop to non-active neurons
             # y_pred[:, non_active_idx] = y_pred[:, non_active_idx].detach()
             # y_pred = y_pred[:, active_idx]
@@ -113,7 +109,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             loss = -torch.mean(torch.sum(smce, 1, keepdim=True))
             '''
 
-            y_pred = Method.model(data)
+            y_pred = model(data)
             loss = -torch.mean(torch.sum(torch.nn.functional.log_softmax(y_pred, dim=1) * labels, dim=1))
 
             loss.backward()
@@ -148,7 +144,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
                 )
             iterations += 1
 
-        Method.test_accuracy(Method.model, device, test_dl, test_acc_metric, epoch=True)
+        Method.test_accuracy(model, device, test_dl, test_acc_metric, epoch=True)
         test_acc = test_acc_metric.avg
         print("Step %d: Top 1 Test Accuracy %.4f" % (iterations - 1, test_acc))
         # recorder.add_testacc(test_acc)

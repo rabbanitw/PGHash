@@ -11,7 +11,7 @@ class PGHash(ModelHub):
     Class to apply our PGHash(-D) algorithm to recommender systems.
     """
 
-    def __init__(self, num_labels, num_features, rank, size, influence, device, device2, args, slide=False):
+    def __init__(self, num_labels, num_features, rank, size, influence, device, args, slide=False):
         """
         Initializing the PGHash class.
         :param num_labels: Dimensionality of labels in recommender system dataset
@@ -32,7 +32,6 @@ class PGHash(ModelHub):
         self.hash_dicts = [[] for _ in range(self.num_tables)]
         self.dwta = args.dwta
         self.device = device
-        self.device2 = device2
         self.slide = slide
 
     def test_full_model(self, test_data, acc_meter, epoch_test=True, num_batches=30):
@@ -109,7 +108,7 @@ class PGHash(ModelHub):
                 else:
                     perm_weight = self.model.linear2.weight.t()
                 # run PGHash-D LSH
-                hash_dict, perm2 = gpu_pghashd_lsh(self.device2, perm_weight, self.k, slide=self.slide)
+                hash_dict, perm2 = gpu_pghashd_lsh(self.device, perm_weight, self.k, slide=self.slide)
                 # save the permutation list in local memory (small memory cost) and hash tables
                 if not self.slide:
                     self.SB[i] = perm
@@ -122,7 +121,7 @@ class PGHash(ModelHub):
                 # weights = self.model.linear2.weight.detach().cpu().numpy().transpose()
                 weights = self.model.linear2.weight.t()
                 # SB, hash_dict = pghash_lsh(weights, self.hls, self.k, self.c)
-                SB, hash_dict = gpu_pghash_lsh(self.device2, weights, self.hls, self.k, self.c)
+                SB, hash_dict = gpu_pghash_lsh(self.device, weights, self.hls, self.k, self.c)
                 # save gaussian and hash tables
                 # when rehashing is performed every step, these cn be immediately discarded
                 self.SB[i] = SB
