@@ -51,7 +51,6 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             # active neuron selection step: each sample in batch is hashed and the resulting hash code is used
             # to select which neurons will be activated (exact matches -- vanilla style)
             active_idx, sample_active_idx, true_neurons_bool = Method.lsh_vanilla(Method.model, data)
-            non_active_idx = idx[~true_neurons_bool]
 
             lsh_time = time.time() - lsh_init
 
@@ -65,8 +64,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
 
             data = data.to(device)
             # shorten the true label
-            labels = labels.to_dense()
-            labels = labels[:, active_idx].to(device)
+            labels = labels.to_dense().to(device)
 
             # compute test accuracy every X steps
             if iterations % args.steps_per_test == 0:
@@ -78,14 +76,13 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
 
             init_time = time.time()
 
-            optimizer.zero_grad()
 
+            '''
             # create a mask to ensure only the active neurons for each sample are used & updated during training
             # note: try to save computational time below by creating mask from indices sans for loop
             mask = np.zeros((batch_size, num_labels))
             for j in range(batch_size):
                 mask[j, sample_active_idx[j]] = 1
-            # mask = mask[:, active_idx]
 
             active_mask = torch.from_numpy(mask).to(device)
             softmax_mask = torch.where(active_mask == 1, 0., torch.tensor(-1e20)).to(device)
@@ -106,16 +103,21 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             smce.register_hook(lambda grad: grad * active_mask)
 
             loss = -torch.mean(torch.sum(smce, 1, keepdim=True))
+            '''
+
+            y_pred = Method.model(data)
+            loss = -torch.mean(torch.sum(torch.nn.functional.log_softmax(y_pred, dim=1) * labels, dim=1))
 
             loss.backward()
             optimizer.step()
+            optimizer.zero_grad()
 
             loss_val = loss.item()
 
             # compute accuracy (top 1) and loss for the minibatch
             rec_init = time.time()
             losses.update(np.array(loss_val), batch_size)
-            acc1 = top1acc(y_pred[:, active_idx], labels)
+            acc1 = top1acc(y_pred, labels)
 
             train_acc_metric.update(acc1, batch_size)
             record_time = time.time() - rec_init
