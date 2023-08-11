@@ -39,6 +39,8 @@ if __name__ == '__main__':
     torch.manual_seed(randomSeed)
     np.random.seed(randomSeed)
     random.seed(randomSeed)
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
 
     # determine torch device available (default to GPU if available)
     if torch.cuda.is_available():
@@ -116,4 +118,3 @@ if __name__ == '__main__':
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     pg_train(0, model, Method, device, optimizer, train_dl, test_dl, losses, top1, test_top1, recorder, args)
-

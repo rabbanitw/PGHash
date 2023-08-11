@@ -1,6 +1,5 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from scipy.sparse import coo_matrix, csr_matrix
 import random
 
 
@@ -82,39 +81,3 @@ def data_generator_csr(file, batch_size, num_features, num_classes):
     dataloader = DataLoader(sparse_dataset, batch_size=batch_size, shuffle=True)
 
     return dataloader
-
-
-def sparse_batch_collate(batch):
-    """
-    Collate function which to transform scipy coo matrix to pytorch sparse tensor
-    """
-    # batch[0] since it is returned as a one element list
-    data_batch, targets_batch = batch[0]
-
-    if type(data_batch[0]) == csr_matrix:
-        data_batch = data_batch.tocoo()  # removed vstack
-        data_batch = sparse_coo_to_tensor(data_batch)
-    else:
-        data_batch = torch.FloatTensor(data_batch)
-
-    if type(targets_batch[0]) == csr_matrix:
-        targets_batch = targets_batch.tocoo()  # removed vstack
-        targets_batch = sparse_coo_to_tensor(targets_batch)
-    else:
-        targets_batch = torch.FloatTensor(targets_batch)
-    return data_batch, targets_batch
-
-
-def sparse_coo_to_tensor(coo: coo_matrix):
-    """
-    Transform scipy coo matrix to pytorch sparse tensor
-    """
-    values = coo.data
-    indices = (coo.row, coo.col)  # np.vstack
-    shape = coo.shape
-
-    i = torch.LongTensor(indices)
-    v = torch.FloatTensor(values)
-    s = torch.Size(shape)
-
-    return torch.sparse.FloatTensor(i, v, s)
