@@ -6,6 +6,7 @@ from misc import AverageMeter, Recorder
 from pghash import PGHash
 from pg_train import pg_train
 import numpy as np
+import random
 
 
 if __name__ == '__main__':
@@ -41,6 +42,7 @@ if __name__ == '__main__':
     randomSeed = args.randomSeed
     torch.manual_seed(randomSeed)
     np.random.seed(randomSeed)
+    random.seed(randomSeed)
 
     # determine torch device available (default to GPU if available)
     if torch.cuda.is_available():

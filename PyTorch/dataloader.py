@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from scipy.sparse import coo_matrix, csr_matrix
+import random
 
 
 class SparseDataset(Dataset):
@@ -40,6 +41,9 @@ def data_generator_csr(file, batch_size, num_features, num_classes):
         crow_indices_label = [0]
         col_indices_label = []
         vals_label = []
+
+        # randomize data
+        random.shuffle(lines)
 
         for line in lines:
 
