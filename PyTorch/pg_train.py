@@ -41,6 +41,7 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
 
         for data, labels in train_dl:
 
+            '''
             # compute LSH
             lsh_init = time.time()
 
@@ -61,10 +62,17 @@ def pg_train(rank, Method, device, optimizer, train_dl, test_dl, losses, train_a
             for i in range(batch_size):
                 total_neruons += len(sample_active_idx[i])
             average_active_per_sample = total_neruons/batch_size
+            '''
 
             data = data.to(device)
             # shorten the true label
             labels = labels.to_dense().to(device)
+
+            batch_size, _ = labels.shape
+            lsh_time = 0
+            average_active_per_sample = 0
+            num_active_neurons = 0
+
 
             # compute test accuracy every X steps
             if iterations % args.steps_per_test == 0:
