@@ -1,7 +1,7 @@
 import torch
 import argparse
 from dataloader import data_generator_train, data_generator_test
-from misc import AverageMeter, Recorder, compute_accuracy
+from misc import AverageMeter, Recorder, top1acc, top1acc_test
 from pghash import PGHash
 import numpy as np
 import random
@@ -118,8 +118,7 @@ if __name__ == '__main__':
     # test_dl = data_generator_csr(test_data_path, test_bs, nf, nc)
 
     # initialize meters
-    top1 = AverageMeter()
-    test_top1 = AverageMeter()
+    train_acc = AverageMeter()
     losses = AverageMeter()
     recorder = Recorder('../output', 1, 0, args)
 
@@ -152,14 +151,22 @@ if __name__ == '__main__':
         comp_time = time.time() - init_time
 
         # compute accuracy
-        batch_acc = compute_accuracy(logits, y)
+        batch_acc = top1acc(logits, y)
+        losses.update(loss_val, train_bs)
+        train_acc.update(batch_acc, train_bs)
+
+        # store and save accuracy and loss values
+        recorder.add_new(comp_time + lsh_time, comp_time, 0, lsh_time, batch_acc, loss_val)
+        recorder.save_to_file()
 
         # print stats occasionally
         if i % 10 == 0:
             print(
-                "Step %d: Epoch Time %f, LSH Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
-                % (i, (comp_time + lsh_time), lsh_time, loss_val, batch_acc, i*train_bs)
+                "Step %d: Epoch Time %f, LSH Time %f, Running Loss %.6f, Running Accuracy %.4f, [%d Total Samples]"
+                % (i, (comp_time + lsh_time), lsh_time, losses.avg, train_acc.avg, i*train_bs)
             )
+            train_acc.reset()
+            losses.reset()
 
         # validate
         if i % args.steps_per_test == 0 or i % steps_per_epoch == 0:
@@ -180,12 +187,13 @@ if __name__ == '__main__':
                                                 requires_grad=False)
                     optimizer.zero_grad()
                     logits = model(x)
-                    p_at_k += compute_accuracy(logits, labels_batch)
+                    p_at_k += top1acc_test(logits, labels_batch)
 
                 test_acc = p_at_k / num_batches
                 if epoch_flag:
                     epoch = i / steps_per_epoch
                     print("Epoch %d: Top 1 Test Accuracy %.4f\n" % (epoch, test_acc))
+                    recorder.add_test_accuracy(test_acc, epoch=epoch_flag)
                 else:
                     print("Step %d: Top 1 Test Accuracy %.4f" % (i, test_acc))
-                recorder.add_testacc(test_acc)
+                    recorder.add_test_accuracy(test_acc, epoch=epoch_flag)

@@ -4,17 +4,20 @@ import os
 import shutil
 
 
-def compute_accuracy(logits, labels_batch):
-    top_k_classes = torch.argmax(logits, dim=1).cpu()
-    pred = [len(np.intersect1d(top_k_classes[j], labels_batch[j])) for j in range(len(top_k_classes))]
-    return np.mean(pred)
-
-
 def top1acc(y_pred, y_true):
-    top = torch.argmax(y_pred, dim=1)
+    top = torch.argmax(y_pred, dim=1).cpu()
     count = 0
     for i, idx in enumerate(top):
-        if y_true[i, idx]:
+        if y_true[i][idx]:
+            count += 1
+    return count / len(top)
+
+
+def top1acc_test(y_pred, y_true):
+    top = torch.argmax(y_pred, dim=1).cpu()
+    count = 0
+    for i, idx in enumerate(top):
+        if idx in y_true[i]:
             count += 1
     return count / len(top)
 
@@ -45,12 +48,9 @@ class Recorder(object):
         self.record_comm_times = list()
         self.record_lsh_times = list()
         self.record_losses = list()
-        self.record_training_acc1 = list()
-        self.record_test_acc1 = list()
-        self.record_avg_losses = list()
-        self.record_avg_training_acc1 = list()
-        self.num_active_neurons = list()
-        self.avg_active_neurons = list()
+        self.record_train_acc = list()
+        self.record_test_acc = list()
+        self.epoch_test_acc = list()
         self.rank = rank
         self.saveFolderName = folderName + '/' + args.name + '-' + args.hash_type + '-' + args.dataset + '-' \
                               + str(size) + 'workers-' + str(args.cr) + 'cr-' + str(args.num_tables) + 'tables-' + \
@@ -70,22 +70,23 @@ class Recorder(object):
     def get_saveFolder(self):
         return self.saveFolderName
 
-    def add_new(self, epoch_time, comp_time, comm_time, lsh_time, train_acc1, test_acc1, losses,
-                avg_acc1, avg_losses, active_neurons, avg_neurons):
+    def add_new(self, epoch_time, comp_time, comm_time, lsh_time, train_acc1, losses):
         self.record_epoch_times.append(epoch_time)
         self.record_comp_times.append(comp_time)
         self.record_comm_times.append(comm_time)
         self.record_lsh_times.append(lsh_time)
-        self.record_training_acc1.append(train_acc1)
-        self.record_test_acc1.append(test_acc1)
+        self.record_train_acc.append(train_acc1)
         self.record_losses.append(losses)
-        self.record_avg_training_acc1.append(avg_acc1)
-        self.record_avg_losses.append(avg_losses)
-        self.num_active_neurons.append(active_neurons)
-        self.avg_active_neurons.append(avg_neurons)
 
-    def add_testacc(self, test_acc):
-        self.record_test_acc1.append(test_acc)
+    def add_test_accuracy(self, test_acc, epoch=False):
+        if epoch:
+            self.epoch_test_acc.append(test_acc)
+            np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-epoch-acc-top1.log', self.epoch_test_acc,
+                       delimiter=',')
+        else:
+            self.record_test_acc.append(test_acc)
+            np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-test-acc-top1.log', self.record_test_acc,
+                       delimiter=',')
 
     def save_to_file(self):
         np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-epoch-time.log', self.record_epoch_times,
@@ -98,15 +99,5 @@ class Recorder(object):
                    delimiter=',')
         np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-train-loss.log', self.record_losses,
                    delimiter=',')
-        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-avg-epoch-train-loss.log', self.record_avg_losses,
-                   delimiter=',')
-        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-train-acc-top1.log', self.record_training_acc1,
-                   delimiter=',')
-        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-avg-epoch-train-acc-top1.log',
-                   self.record_avg_training_acc1, delimiter=',')
-        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-test-acc-top1.log', self.record_test_acc1,
-                   delimiter=',')
-        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-active-neurons.log', self.num_active_neurons,
-                   delimiter=',')
-        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-avg-active-neurons.log', self.avg_active_neurons,
+        np.savetxt(self.saveFolderName + '/r' + str(self.rank) + '-train-acc-top1.log', self.record_train_acc,
                    delimiter=',')
