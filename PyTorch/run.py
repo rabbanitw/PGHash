@@ -19,7 +19,7 @@ class SparseDataset(Dataset):
 
     def __init__(self, data, targets, coo=True):
 
-        if coo:
+        if not coo:
             self.data = data.tocsr()
             self.targets = targets.tocsr()
         else:
@@ -31,6 +31,12 @@ class SparseDataset(Dataset):
 
     def __len__(self):
         return self.data.shape[0]
+
+
+def convert_sparse_matrix_to_sparse_tensor(X):
+    coo = X.tocoo()
+    return torch.sparse.LongTensor(torch.LongTensor([coo.row.tolist(), coo.col.tolist()]),
+                                   torch.LongTensor(coo.data.astype(np.int32)))
 
 
 if __name__ == '__main__':
@@ -130,11 +136,18 @@ if __name__ == '__main__':
     features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
     features_t, labels_t, num_samples_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
 
-    sparse_dataset = SparseDataset(features, labels, coo=False)
+    features = convert_sparse_matrix_to_sparse_tensor(features)
+    features_t = convert_sparse_matrix_to_sparse_tensor(features_t)
+    labels = convert_sparse_matrix_to_sparse_tensor(labels)
+    labels_t = convert_sparse_matrix_to_sparse_tensor(labels_t)
+
+    sparse_dataset = SparseDataset(features, labels, coo=True)
     train_dl = DataLoader(sparse_dataset, batch_size=train_bs, shuffle=True)
 
-    sparse_dataset_t = SparseDataset(features_t, labels_t, coo=False)
+    sparse_dataset_t = SparseDataset(features_t, labels_t, coo=True)
     test_dl = DataLoader(sparse_dataset_t, batch_size=test_bs, shuffle=True)
+
+    # exit()
 
     # initialize meters
     top1 = AverageMeter()
