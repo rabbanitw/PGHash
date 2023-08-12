@@ -245,6 +245,7 @@ def lsh_vanilla(model, device, data, k, num_tables, SBs, hash_dicts, nl, dwta=Tr
             selected_weights = in_layer.T[SB, :]
             empty_bins = torch.count_nonzero(selected_weights, dim=0) == 0
             hash_code = torch.argmax(selected_weights, dim=0).detach().cpu().numpy()
+            empty_bins = empty_bins.detach().cpu().numpy()
             # if empty bins exist, run DWTA
             if np.any(empty_bins):
                 # perform DWTA
