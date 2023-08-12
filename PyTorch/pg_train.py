@@ -137,7 +137,7 @@ def pg_train(rank, model, Method, device, optimizer, train_dl, test_dl, losses, 
 
             # log every X batches
             total_batches += batch_size
-            if iterations % 50 == 0:
+            if iterations % 10 == 0:
                 print(
                     "(Rank %d) Step %d: Epoch Time %f, Comm Time %f, LSH Time %f, Loss %.6f, Top 1 Train Accuracy %.4f,"
                     " Average Active Neurons %d, [%d Total Samples]" % (rank, iterations,

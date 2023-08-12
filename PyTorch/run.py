@@ -10,6 +10,7 @@ from network import SparseNN, SimpleNN
 
 from xclib.data import data_utils
 from torch.utils.data import Dataset, DataLoader
+from scipy.sparse import csr_matrix, coo_matrix
 
 
 class SparseDataset(Dataset):
@@ -17,9 +18,11 @@ class SparseDataset(Dataset):
     Custom Dataset class for scipy sparse matrix
     """
 
-    def __init__(self, data, targets, coo=True):
+    def __init__(self, data, targets, batch_size, coo=True):
 
-        if not coo:
+        self.batch_size = batch_size
+        self.global_idx = 0
+        if coo:
             self.data = data.tocsr()
             self.targets = targets.tocsr()
         else:
@@ -33,10 +36,40 @@ class SparseDataset(Dataset):
         return self.data.shape[0]
 
 
-def convert_sparse_matrix_to_sparse_tensor(X):
-    coo = X.tocoo()
-    return torch.sparse_coo_tensor(torch.tensor([coo.row.tolist(), coo.col.tolist()], dtype=torch.float32),
-                                   torch.tensor(coo.data, dtype=torch.float32))
+def sparse_batch_collate(batch):
+    """
+    Collate function which to transform scipy coo matrix to pytorch sparse tensor
+    """
+    # batch[0] since it is returned as a one element list
+    data_batch, targets_batch = batch[0]
+
+    if type(data_batch[0]) == csr_matrix:
+        data_batch = data_batch.tocoo()  # removed vstack
+        data_batch = sparse_coo_to_tensor(data_batch)
+    else:
+        data_batch = torch.FloatTensor(data_batch)
+
+    if type(targets_batch[0]) == csr_matrix:
+        targets_batch = targets_batch.tocoo()  # removed vstack
+        targets_batch = sparse_coo_to_tensor(targets_batch)
+    else:
+        targets_batch = torch.FloatTensor(targets_batch)
+    return data_batch, targets_batch
+
+
+def sparse_coo_to_tensor(coo: coo_matrix):
+    """
+    Transform scipy coo matrix to pytorch sparse tensor
+    """
+    values = coo.data
+    indices = (coo.row, coo.col)  # np.vstack
+    shape = coo.shape
+
+    i = torch.LongTensor(indices)
+    v = torch.FloatTensor(values)
+    s = torch.Size(shape)
+
+    return torch.sparse.FloatTensor(i, v, s)
 
 
 if __name__ == '__main__':
@@ -57,7 +90,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_bs', type=int, default=128)
     parser.add_argument('--test_bs', type=int, default=128)
     parser.add_argument('--steps_per_lsh', type=int, default=50)
-    parser.add_argument('--steps_per_test', type=int, default=500)
+    parser.add_argument('--steps_per_test', type=int, default=100)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--hidden_layer_size', type=int, default=128)
 
@@ -136,16 +169,24 @@ if __name__ == '__main__':
     features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
     features_t, labels_t, num_samples_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
 
-    features = convert_sparse_matrix_to_sparse_tensor(features)
-    features_t = convert_sparse_matrix_to_sparse_tensor(features_t)
-    labels = convert_sparse_matrix_to_sparse_tensor(labels)
-    labels_t = convert_sparse_matrix_to_sparse_tensor(labels_t)
+    sparse_dataset = SparseDataset(features, labels, train_bs, coo=True)
+    # train_dl = DataLoader(sparse_dataset, batch_size=train_bs, shuffle=True)
 
-    sparse_dataset = SparseDataset(features, labels, coo=True)
-    train_dl = DataLoader(sparse_dataset, batch_size=train_bs, shuffle=True)
+    sparse_dataset_t = SparseDataset(features_t, labels_t, test_bs, coo=True)
+    # test_dl = DataLoader(sparse_dataset_t, batch_size=test_bs, shuffle=True)
 
-    sparse_dataset_t = SparseDataset(features_t, labels_t, coo=True)
-    test_dl = DataLoader(sparse_dataset_t, batch_size=test_bs, shuffle=True)
+    sampler = torch.utils.data.sampler.BatchSampler(
+        torch.utils.data.sampler.RandomSampler(sparse_dataset),
+        batch_size=train_bs,
+        drop_last=False)
+
+    sampler_t = torch.utils.data.sampler.BatchSampler(
+        torch.utils.data.sampler.RandomSampler(sparse_dataset_t),
+        batch_size=test_bs,
+        drop_last=False)
+
+    train_dl = DataLoader(sparse_dataset, sampler=sampler, collate_fn=sparse_batch_collate)
+    test_dl = DataLoader(sparse_dataset_t, sampler=sampler_t, collate_fn=sparse_batch_collate)
 
     # exit()
 
