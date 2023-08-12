@@ -4,6 +4,12 @@ import os
 import shutil
 
 
+def compute_accuracy(logits, labels_batch):
+    top_k_classes = torch.argmax(logits, dim=1).cpu()
+    pred = [len(np.intersect1d(top_k_classes[j], labels_batch[j])) for j in range(len(top_k_classes))]
+    return np.mean(pred)
+
+
 def top1acc(y_pred, y_true):
     top = torch.argmax(y_pred, dim=1)
     count = 0

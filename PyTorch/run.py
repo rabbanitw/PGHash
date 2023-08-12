@@ -1,75 +1,13 @@
 import torch
 import argparse
-from dataloader import data_generator_csr
-from misc import AverageMeter, Recorder
+from dataloader import data_generator_train, data_generator_test
+from misc import AverageMeter, Recorder, compute_accuracy
 from pghash import PGHash
-from pg_train import pg_train
 import numpy as np
 import random
-from network import SparseNN, SimpleNN
-
-from xclib.data import data_utils
-from torch.utils.data import Dataset, DataLoader
-from scipy.sparse import csr_matrix, coo_matrix
-
-
-class SparseDataset(Dataset):
-    """
-    Custom Dataset class for scipy sparse matrix
-    """
-
-    def __init__(self, data, targets, batch_size, coo=True):
-
-        self.batch_size = batch_size
-        self.global_idx = 0
-        if coo:
-            self.data = data.tocsr()
-            self.targets = targets.tocsr()
-        else:
-            self.data = data
-            self.targets = targets
-
-    def __getitem__(self, index):
-        return self.data[index], self.targets[index]
-
-    def __len__(self):
-        return self.data.shape[0]
-
-
-def sparse_batch_collate(batch):
-    """
-    Collate function which to transform scipy coo matrix to pytorch sparse tensor
-    """
-    # batch[0] since it is returned as a one element list
-    data_batch, targets_batch = batch[0]
-
-    if type(data_batch[0]) == csr_matrix:
-        data_batch = data_batch.tocoo()  # removed vstack
-        data_batch = sparse_coo_to_tensor(data_batch)
-    else:
-        data_batch = torch.FloatTensor(data_batch)
-
-    if type(targets_batch[0]) == csr_matrix:
-        targets_batch = targets_batch.tocoo()  # removed vstack
-        targets_batch = sparse_coo_to_tensor(targets_batch)
-    else:
-        targets_batch = torch.FloatTensor(targets_batch)
-    return data_batch, targets_batch
-
-
-def sparse_coo_to_tensor(coo: coo_matrix):
-    """
-    Transform scipy coo matrix to pytorch sparse tensor
-    """
-    values = coo.data
-    indices = (coo.row, coo.col)  # np.vstack
-    shape = coo.shape
-
-    i = torch.LongTensor(indices)
-    v = torch.FloatTensor(values)
-    s = torch.Size(shape)
-
-    return torch.sparse.FloatTensor(i, v, s)
+from network import Net
+import glob
+import time
 
 
 if __name__ == '__main__':
@@ -85,6 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('--c', type=int, default=8)
     parser.add_argument('--k', type=int, default=8)
     parser.add_argument('--num_tables', type=int, default=50)
+    parser.add_argument('--num_val_batches', type=int, default=50)
     parser.add_argument('--lr', type=int, default=1e-4)
     parser.add_argument('--cr', type=float, default=1)
     parser.add_argument('--train_bs', type=int, default=128)
@@ -138,15 +77,27 @@ if __name__ == '__main__':
     hls = args.hidden_layer_size
     train_data_path = '../data/' + args.dataset + '/train.txt'
     test_data_path = '../data/' + args.dataset + '/test.txt'
+    train_files = glob.glob(train_data_path)
+    test_files = glob.glob(test_data_path)
 
     nc = None
     nf = None
+    n_train = None
+    n_test = None
     if args.dataset == 'Amazon670K':
         nc = 670091
         nf = 135909
+        n_train = 490449
+        n_test = 153025
+
     elif args.dataset == 'Delicious200K':
         nc = 205443
         nf = 782585
+        n_train = 196606
+        n_test = 100095
+
+    steps_per_epoch = 196606 // args.train_bs
+    n_steps = args.epochs * steps_per_epoch
 
     if k > c and args.dwta == 1:
         print('Error: Compression Size Smaller than Hash Length for PGHash-D')
@@ -166,30 +117,6 @@ if __name__ == '__main__':
     # train_dl = data_generator_csr(train_data_path, train_bs, nf, nc)
     # test_dl = data_generator_csr(test_data_path, test_bs, nf, nc)
 
-    features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
-    features_t, labels_t, num_samples_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
-
-    sparse_dataset = SparseDataset(features, labels, train_bs, coo=True)
-    # train_dl = DataLoader(sparse_dataset, batch_size=train_bs, shuffle=True)
-
-    sparse_dataset_t = SparseDataset(features_t, labels_t, test_bs, coo=True)
-    # test_dl = DataLoader(sparse_dataset_t, batch_size=test_bs, shuffle=True)
-
-    sampler = torch.utils.data.sampler.BatchSampler(
-        torch.utils.data.sampler.RandomSampler(sparse_dataset),
-        batch_size=train_bs,
-        drop_last=False)
-
-    sampler_t = torch.utils.data.sampler.BatchSampler(
-        torch.utils.data.sampler.RandomSampler(sparse_dataset_t),
-        batch_size=test_bs,
-        drop_last=False)
-
-    train_dl = DataLoader(sparse_dataset, sampler=sampler, collate_fn=sparse_batch_collate)
-    test_dl = DataLoader(sparse_dataset_t, sampler=sampler_t, collate_fn=sparse_batch_collate)
-
-    # exit()
-
     # initialize meters
     top1 = AverageMeter()
     test_top1 = AverageMeter()
@@ -199,8 +126,66 @@ if __name__ == '__main__':
     # select method used and begin training once all devices are ready
     print('Initializing model...')
     Method = PGHash(nc, nf, 0, 1, 1, device, args, slide=slide)
-    # model = SparseNN(nf, hls, nc)
-    model = SimpleNN(nf, hls, nc)
-    model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, eps=1e-7)
-    pg_train(0, model, Method, device, optimizer, train_dl, test_dl, losses, top1, test_top1, recorder, args)
+    model = Net(nf, hls, nc).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+    # load data generator
+    training_data_generator = data_generator_train(train_files, train_bs, nc)
+
+    lsh_time = 0
+    for i in range(1, n_steps+1):
+        # train
+        idxs_batch, vals_batch, y = next(training_data_generator)
+        x = torch.sparse_coo_tensor(idxs_batch, vals_batch,
+                                    size=(train_bs, nf),
+                                    device=device,
+                                    requires_grad=False)
+        label = torch.from_numpy(y).to(device)
+        optimizer.zero_grad()
+
+        init_time = time.time()
+        logits = model(x)
+        loss = -torch.mean((torch.nn.functional.log_softmax(logits, dim=1) * label).sum(1))
+        loss.backward()
+        optimizer.step()
+        loss_val = loss.item()
+        comp_time = time.time() - init_time
+
+        # compute accuracy
+        batch_acc = compute_accuracy(logits, y)
+
+        # print stats occasionally
+        if i % 10 == 0:
+            print(
+                "Step %d: Epoch Time %f, LSH Time %f, Loss %.6f, Top 1 Train Accuracy %.4f, [%d Total Samples]"
+                % (i, (comp_time + lsh_time), lsh_time, loss_val, batch_acc, i*train_bs)
+            )
+
+        # validate
+        if i % args.steps_per_test == 0 or i % steps_per_epoch == 0:
+            test_data_generator = data_generator_test(test_files, test_bs)
+            p_at_k = 0
+            if i % steps_per_epoch == 0:
+                epoch_flag = True
+                num_batches = n_test // test_bs
+            else:
+                epoch_flag = False
+                num_batches = args.num_val_batches
+            with torch.no_grad():
+                for _ in range(num_batches):
+                    idxs_batch, vals_batch, labels_batch = next(test_data_generator)
+                    x = torch.sparse_coo_tensor(idxs_batch, vals_batch,
+                                                size=(test_bs, nf),
+                                                device=device,
+                                                requires_grad=False)
+                    optimizer.zero_grad()
+                    logits = model(x)
+                    p_at_k += compute_accuracy(logits, labels_batch)
+
+                test_acc = p_at_k / num_batches
+                if epoch_flag:
+                    epoch = i / steps_per_epoch
+                    print("Epoch %d: Top 1 Test Accuracy %.4f\n" % (epoch, test_acc))
+                else:
+                    print("Step %d: Top 1 Test Accuracy %.4f" % (i, test_acc))
+                recorder.add_testacc(test_acc)

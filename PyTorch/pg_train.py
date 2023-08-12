@@ -67,7 +67,7 @@ def pg_train(rank, model, Method, device, optimizer, train_dl, test_dl, losses, 
             labels = labels.to_dense().to(device)
 
             # divide by num labels
-            labels = labels / torch.count_nonzero(labels, dim=1).unsqueeze(1)
+            # labels = labels / torch.count_nonzero(labels, dim=1).unsqueeze(1)
 
             batch_size, _ = labels.shape
             lsh_time = 0
@@ -114,6 +114,7 @@ def pg_train(rank, model, Method, device, optimizer, train_dl, test_dl, losses, 
 
             y_pred = model(data)
             loss = -torch.mean(torch.sum(torch.nn.functional.log_softmax(y_pred, dim=1) * labels, dim=1))
+            # loss = -((torch.nn.LogSoftmax(dim=1)(y_pred) * labels).sum(1)).mean()
 
             loss.backward()
             optimizer.step()
