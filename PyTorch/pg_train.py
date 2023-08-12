@@ -66,6 +66,9 @@ def pg_train(rank, model, Method, device, optimizer, train_dl, test_dl, losses, 
             data = data.to(device)
             labels = labels.to_dense().to(device)
 
+            # divide by num labels
+            labels = labels / torch.count_nonzero(labels, dim=1).unsqueeze(1)
+
             batch_size, _ = labels.shape
             lsh_time = 0
             average_active_per_sample = 0

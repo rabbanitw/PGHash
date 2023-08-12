@@ -12,7 +12,7 @@ def convert_sparse_matrix_to_sparse_tensor(X):
 def load_extreme_data(rank, size, train_bs, test_bs, train_data_path, test_data_path):
     # load data
     features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
-    features_t, labels_t, num_labels_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
+    features_t, labels_t, num_samples_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
 
     # partition data amongst workers
     worker_features = partition_sparse_dataset(features, rank, size)

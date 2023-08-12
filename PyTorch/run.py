@@ -8,6 +8,30 @@ import numpy as np
 import random
 from network import SparseNN, SimpleNN
 
+from xclib.data import data_utils
+from torch.utils.data import Dataset, DataLoader
+
+
+class SparseDataset(Dataset):
+    """
+    Custom Dataset class for scipy sparse matrix
+    """
+
+    def __init__(self, data, targets, coo=True):
+
+        if coo:
+            self.data = data.tocsr()
+            self.targets = targets.tocsr()
+        else:
+            self.data = data
+            self.targets = targets
+
+    def __getitem__(self, index):
+        return self.data[index], self.targets[index]
+
+    def __len__(self):
+        return self.data.shape[0]
+
 
 if __name__ == '__main__':
 
@@ -100,8 +124,17 @@ if __name__ == '__main__':
 
     # load (large) dataset
     print('Loading and partitioning data...')
-    train_dl = data_generator_csr(train_data_path, train_bs, nf, nc)
-    test_dl = data_generator_csr(test_data_path, test_bs, nf, nc)
+    # train_dl = data_generator_csr(train_data_path, train_bs, nf, nc)
+    # test_dl = data_generator_csr(test_data_path, test_bs, nf, nc)
+
+    features, labels, num_samples, num_features, num_labels = data_utils.read_data(train_data_path)
+    features_t, labels_t, num_samples_t, num_features_t, num_labels_t = data_utils.read_data(test_data_path)
+
+    sparse_dataset = SparseDataset(features, labels, coo=False)
+    train_dl = DataLoader(sparse_dataset, batch_size=train_bs, shuffle=True)
+
+    sparse_dataset_t = SparseDataset(features_t, labels_t, coo=False)
+    test_dl = DataLoader(sparse_dataset_t, batch_size=test_bs, shuffle=True)
 
     # initialize meters
     top1 = AverageMeter()
@@ -115,5 +148,5 @@ if __name__ == '__main__':
     # model = SparseNN(nf, hls, nc)
     model = SimpleNN(nf, hls, nc)
     model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, eps=1e-7)
     pg_train(0, model, Method, device, optimizer, train_dl, test_dl, losses, top1, test_top1, recorder, args)
