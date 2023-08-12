@@ -35,8 +35,8 @@ class SparseDataset(Dataset):
 
 def convert_sparse_matrix_to_sparse_tensor(X):
     coo = X.tocoo()
-    return torch.sparse.LongTensor(torch.LongTensor([coo.row.tolist(), coo.col.tolist()]),
-                                   torch.LongTensor(coo.data.astype(np.int32)))
+    return torch.sparse_coo_tensor(torch.tensor([coo.row.tolist(), coo.col.tolist()], dtype=torch.float32),
+                                   torch.tensor(coo.data, dtype=torch.float32))
 
 
 if __name__ == '__main__':
