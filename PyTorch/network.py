@@ -80,3 +80,7 @@ class Net(torch.nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+
+    def hidden_forward(self, x):
+        x = F.relu(self.fc1(x))
+        return x

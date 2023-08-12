@@ -207,4 +207,121 @@ def gpu_pghashd_lsh(device, weights, k, slide=False):
     # make the dictionary contain numpy arrays and not a list (for faster slicing)
     for key in hash_dict:
         hash_dict[key] = np.fromiter(hash_dict[key], dtype=np.int)
-    return hash_dict, permutation
+    return permutation, hash_dict
+
+
+def lsh_vanilla(model, device, data, k, num_tables, SBs, hash_dicts, nl, dwta=True):
+    """
+    Function which performs the input hashing for each sample in a batch of data.
+    :param model: Current recommender system model
+    :param data: Batch of training data
+    :return: Active neurons for each sample in a batch of data
+    """
+
+    # get input layer for LSH using current model
+    with torch.no_grad():
+        in_layer = model.hidden_forward(data)
+        in_layer = in_layer# .detach().cpu().numpy()
+
+    # find batch size and initialize parameters
+    bs = in_layer.shape[0]
+    bs_range = np.arange(bs)
+    local_active_counter = [np.zeros(nl, dtype=bool) for _ in range(bs)]
+    global_active_counter = np.zeros(nl, dtype=bool)
+    full_size = np.arange(nl)
+    prev_global = None
+    unique = 0
+    num_c_layers = nl
+
+    # run through the prescribed number of tables to find exact matches (vanilla) which are marked as active neurons
+    for i in range(num_tables):
+        # load gaussian (or SB) matrix
+        SB = SBs[i]
+        hash_dict = hash_dicts[i]
+
+        # PGHash-D hashing style
+        if dwta:
+            # Apply WTA to input vector.
+            selected_weights = in_layer.T[SB, :]
+            empty_bins = torch.count_nonzero(selected_weights, dim=0) == 0
+            hash_code = torch.argmax(selected_weights, dim=0).detach().cpu().numpy()
+            # if empty bins exist, run DWTA
+            if np.any(empty_bins):
+                # perform DWTA
+                hash_code[empty_bins] = -1
+                constant = np.zeros_like(hash_code)
+                i = 1
+                while np.any(empty_bins):
+                    empty_bins_roll = np.roll(empty_bins, i)
+                    hash_code[empty_bins] = hash_code[empty_bins_roll]
+                    constant[empty_bins] += 2 * k
+                    empty_bins = (hash_code == -1)
+                    i += 1
+                hash_code += constant
+
+        # PGHash hashing style
+        else:
+            # apply PG Gaussian to input vector
+            transformed_layer = torch.heaviside(torch.from_numpy(SB).to(device) @ in_layer.T,
+                                                torch.tensor(0.)).detach().cpu().numpy()
+
+            # convert data to base 2 to remove repeats
+            hash_code = transformed_layer.T.dot(1 << np.arange(transformed_layer.T.shape[-1]))
+
+        # after computing hash codes for each sample, loop over the samples and match them to neurons
+        for j in bs_range:
+            # find current sample hash code
+            hc = hash_code[j]
+            # determine neurons which have the same hash code
+            active_neurons = hash_dict[hc]
+            # mark these neurons as active for the sample as well as the global counter
+            local_active_counter[j][active_neurons] = True
+            global_active_counter[active_neurons] = True
+
+        # compute how many neurons are active across the ENTIRE batch
+        unique = np.count_nonzero(global_active_counter)
+
+        # once the prescribed total number of neurons are reached, end LSH
+        if unique >= num_c_layers:
+            break
+        else:
+            # store the previous list of total neurons in the case that it can be used if the next list is over the
+            # total number of neurons required (and can be randomly shaven down)
+            prev_global = np.copy(global_active_counter)
+
+    # remove selected neurons (in a smart way)
+    gap = unique - num_c_layers
+    if gap > 0:
+        if prev_global is None:
+            p = global_active_counter / unique
+        else:
+            # remove most recent selected neurons if multiple tables are used
+            change = global_active_counter != prev_global
+            p = change / np.count_nonzero(change)
+
+        # randomly select neurons from most recent table to deactivate
+        deactivate = np.random.choice(full_size, size=gap, replace=False, p=p)
+        global_active_counter[deactivate] = False
+
+        for k in bs_range:
+            # shave off deactivated neurons
+            lac = local_active_counter[k] * global_active_counter
+            # select only active neurons for this sample
+            local_active_counter[k] = full_size[lac]
+
+        # set the current active neurons across the ENTIRE batch
+        ci = full_size[global_active_counter]
+        true_neurons_bool = global_active_counter
+    else:
+        # in order to ensure the entire model is used (due to TF issues) we classify the true neurons and fill
+        # the rest with "fake" neurons which won't be back propagated on
+        remaining_neurons = full_size[np.logical_not(global_active_counter)]
+        true_neurons_bool = np.copy(global_active_counter)
+        fake_neurons = remaining_neurons[:-gap]
+        global_active_counter[fake_neurons] = True
+        ci = full_size[global_active_counter]
+        for k in bs_range:
+            # select only active neurons for this sample
+            local_active_counter[k] = full_size[local_active_counter[k]]
+
+    return ci, local_active_counter, true_neurons_bool
