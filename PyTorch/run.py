@@ -2,7 +2,6 @@ import torch
 import argparse
 from dataloader import data_generator_train, data_generator_test
 from misc import AverageMeter, Recorder, top1acc, top1acc_test
-from pghash import PGHash
 import numpy as np
 import random
 from network import Net
@@ -141,7 +140,7 @@ if __name__ == '__main__':
         n_test = 100095
         dwta = False
 
-    steps_per_epoch = 196606 // args.train_bs
+    steps_per_epoch = n_train // args.train_bs
     n_steps = args.epochs * steps_per_epoch
 
     if k > c and args.dwta == 1:
@@ -174,7 +173,6 @@ if __name__ == '__main__':
 
     # select method used and begin training once all devices are ready
     print('Initializing model...')
-    Method = PGHash(nc, nf, 0, 1, 1, device, args, slide=slide)
     model = Net(nf, hls, nc).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -199,7 +197,7 @@ if __name__ == '__main__':
 
             # rehashing step: weights of final layer are hashed and placed into buckets depending upon their hash code
             if i % steps_per_lsh == 0 or i == 1:
-                SB, hash_dicts = rehash(model, device, SB, hash_dicts, c, k, hls, num_tables, dwta=dwta, slide=slide)
+                SB, hash_dicts = rehash(model, device2, SB, hash_dicts, c, k, hls, num_tables, dwta=dwta, slide=slide)
 
             # active neuron selection step: each sample in batch is hashed and the resulting hash code is used
             # to select which neurons will be activated (exact matches -- vanilla style)
@@ -214,8 +212,8 @@ if __name__ == '__main__':
             for j in range(train_bs):
                 mask[j, sample_active_idx[j]] = 1
 
-            active_mask = torch.from_numpy(mask)
-            mask = torch.where(active_mask == 1, 0., torch.tensor(-1e20)).to(device)
+            active_mask = torch.from_numpy(mask).to(device)
+            softmax_mask = torch.where(active_mask == 1, 0., torch.tensor(-1e20)).to(device)
 
         optimizer.zero_grad()
 
@@ -231,12 +229,10 @@ if __name__ == '__main__':
         else:
             # perform gradient update, using only ACTIVE neurons as part of sum
             # stop gradient backprop to non-active neurons
-
-            logits = torch.add(logits, mask)
+            logits = torch.add(logits, softmax_mask)
             log_sm = torch.nn.functional.log_softmax(logits, dim=1)
             # zero out non-active neurons for each sample
-            mask = active_mask.to(device)
-            log_sm = torch.multiply(log_sm, mask)
+            log_sm = torch.multiply(log_sm, active_mask)
             smce = torch.multiply(log_sm, label)
 
             # stop gradient

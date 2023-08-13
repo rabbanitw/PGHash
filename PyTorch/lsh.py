@@ -221,7 +221,7 @@ def lsh_vanilla(model, device, data, k, num_tables, SBs, hash_dicts, nl, dwta=Tr
     # get input layer for LSH using current model
     with torch.no_grad():
         in_layer = model.hidden_forward(data)
-        in_layer = in_layer# .detach().cpu().numpy()
+        in_layer = in_layer
 
     # find batch size and initialize parameters
     bs = in_layer.shape[0]
