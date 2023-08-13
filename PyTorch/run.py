@@ -214,9 +214,8 @@ if __name__ == '__main__':
             for j in range(train_bs):
                 mask[j, sample_active_idx[j]] = 1
 
-            active_mask = torch.from_numpy(mask).to(device)
-            softmax_mask = torch.where(active_mask == 1, 0., torch.tensor(-1e20)).to(device)
-
+            active_mask = torch.from_numpy(mask)
+            mask = torch.where(active_mask == 1, 0., torch.tensor(-1e20)).to(device)
 
         optimizer.zero_grad()
 
@@ -232,10 +231,12 @@ if __name__ == '__main__':
         else:
             # perform gradient update, using only ACTIVE neurons as part of sum
             # stop gradient backprop to non-active neurons
-            logits = torch.add(logits, softmax_mask)
+
+            logits = torch.add(logits, mask)
             log_sm = torch.nn.functional.log_softmax(logits, dim=1)
             # zero out non-active neurons for each sample
-            log_sm = torch.multiply(log_sm, active_mask)
+            mask = active_mask.to(device)
+            log_sm = torch.multiply(log_sm, mask)
             smce = torch.multiply(log_sm, label)
 
             # stop gradient
@@ -279,7 +280,6 @@ if __name__ == '__main__':
             with torch.no_grad():
                 for _ in range(num_batches):
                     idxs_batch, vals_batch, labels_batch = next(test_data_generator)
-                    print(np.mean(labels_batch[0]))
                     x = torch.sparse_coo_tensor(idxs_batch, vals_batch,
                                                 size=(test_bs, nf),
                                                 device=device,
