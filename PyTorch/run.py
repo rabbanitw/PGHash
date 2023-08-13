@@ -180,6 +180,7 @@ if __name__ == '__main__':
 
     # load data generator
     training_data_generator = data_generator_train(train_files, train_bs, nc)
+    test_data_generator = data_generator_test(test_files, test_bs)
 
     lsh_time = 0
     for i in range(1, n_steps+1):
@@ -267,9 +268,9 @@ if __name__ == '__main__':
 
         # validate
         if i % args.steps_per_test == 0 or i % steps_per_epoch == 0:
-            test_data_generator = data_generator_test(test_files, test_bs)
             p_at_k = 0
             if i % steps_per_epoch == 0:
+                test_data_generator = data_generator_test(test_files, test_bs)
                 epoch_flag = True
                 num_batches = n_test // test_bs
             else:
@@ -278,6 +279,7 @@ if __name__ == '__main__':
             with torch.no_grad():
                 for _ in range(num_batches):
                     idxs_batch, vals_batch, labels_batch = next(test_data_generator)
+                    print(np.mean(labels_batch[0]))
                     x = torch.sparse_coo_tensor(idxs_batch, vals_batch,
                                                 size=(test_bs, nf),
                                                 device=device,
