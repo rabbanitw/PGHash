@@ -33,6 +33,7 @@ If this works, feel free to run the scripts that are present in the codebase!
 
 ## Citation
 
+```
 @inproceedings{
     rabbani2023pghash,
     title={Large-Scale Distributed Learning via Private On-Device LSH},
@@ -41,3 +42,4 @@ If this works, feel free to run the scripts that are present in the codebase!
     year={2023},
     url={https://openreview.net/forum?id=dpdbbN7AKr},
 }
+```
