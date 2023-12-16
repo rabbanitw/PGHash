@@ -30,3 +30,14 @@ mpirun -np 1 python run_pg.py --hash_type pghash --dataset Delicious200K --name 
 ```
 
 If this works, feel free to run the scripts that are present in the codebase!
+
+## Citation
+
+@inproceedings{
+    rabbani2023pghash,
+    title={Large-Scale Distributed Learning via Private On-Device LSH},
+    author={Tahseen Rabbani and Marco Bornstein and Furong Huang},
+    booktitle={Thirty-seventh Conference on Neural Information Processing Systems},
+    year={2023},
+    url={https://openreview.net/forum?id=dpdbbN7AKr},
+}
